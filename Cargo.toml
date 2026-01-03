@@ -1,0 +1,43 @@
+[package]
+name = "bitcoin-core-miniscript-ffi"
+version = "0.3.5"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "FFI bindings to Bitcoin Core's miniscript implementation for cross-verification and reference testing"
+repository = "https://github.com/portlandhodl/rust-bitcoin-core-miniscript-ffi"
+documentation = "https://docs.rs/bitcoin-core-miniscript-ffi"
+homepage = "https://github.com/portlandhodl/rust-bitcoin-core-miniscript-ffi"
+keywords = ["bitcoin", "miniscript", "ffi", "taproot", "script"]
+categories = ["cryptography::cryptocurrencies", "external-ffi-bindings"]
+readme = "README.md"
+exclude = [
+    "vendor/",
+    ".github/",
+]
+
+[lib]
+name = "miniscript_core_ffi"
+path = "src/lib.rs"
+
+[dependencies]
+bitcoin = "0.32"
+libc = "0.2"
+
+[dev-dependencies]
+bitcoin = { version = "0.32", features = ["rand"] }
+hex = "0.4"
+
+[build-dependencies]
+bindgen = "0.72.1"
+cmake = "0.1"
+
+[features]
+default = []
+vendored = []
+
+# docs.rs configuration
+[package.metadata.docs.rs]
+# Build documentation using stub bindings (no native library needed)
+# The build.rs detects DOCS_RS env var and generates stub FFI bindings
+all-features = true
