@@ -293,6 +293,89 @@ unsafe extern "C" {
 
     pub fn miniscript_version() -> *const ::std::os::raw::c_char;
 }
+
+// Descriptor types for docs.rs stub bindings
+
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum DescriptorNetwork {
+    DESCRIPTOR_NETWORK_MAINNET = 0,
+    DESCRIPTOR_NETWORK_TESTNET = 1,
+    DESCRIPTOR_NETWORK_SIGNET = 2,
+    DESCRIPTOR_NETWORK_REGTEST = 3,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct DescriptorNode {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct DescriptorResult {
+    pub success: bool,
+    pub error_message: *mut ::std::os::raw::c_char,
+}
+
+unsafe extern "C" {
+    pub fn descriptor_parse(
+        descriptor_str: *const ::std::os::raw::c_char,
+        out_node: *mut *mut DescriptorNode,
+    ) -> DescriptorResult;
+
+    pub fn descriptor_is_range(node: *const DescriptorNode) -> bool;
+
+    pub fn descriptor_is_solvable(node: *const DescriptorNode) -> bool;
+
+    pub fn descriptor_to_string(node: *const DescriptorNode) -> *mut ::std::os::raw::c_char;
+
+    pub fn descriptor_expand(
+        node: *const DescriptorNode,
+        pos: ::std::os::raw::c_int,
+        out_script: *mut *mut u8,
+        out_len: *mut usize,
+    ) -> bool;
+
+    pub fn descriptor_get_address(
+        node: *const DescriptorNode,
+        pos: ::std::os::raw::c_int,
+        network: DescriptorNetwork,
+    ) -> *mut ::std::os::raw::c_char;
+
+    pub fn descriptor_get_pubkeys(
+        node: *const DescriptorNode,
+        pos: ::std::os::raw::c_int,
+        out_pubkeys: *mut *mut *mut u8,
+        out_lens: *mut *mut usize,
+        out_count: *mut usize,
+    ) -> bool;
+
+    pub fn descriptor_get_script_size(
+        node: *const DescriptorNode,
+        out_size: *mut i64,
+    ) -> bool;
+
+    pub fn descriptor_get_max_satisfaction_weight(
+        node: *const DescriptorNode,
+        use_max_sig: bool,
+        out_weight: *mut i64,
+    ) -> bool;
+
+    pub fn descriptor_get_checksum(
+        descriptor_str: *const ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_char;
+
+    pub fn descriptor_node_free(node: *mut DescriptorNode);
+
+    pub fn descriptor_free_string(str_: *mut ::std::os::raw::c_char);
+
+    pub fn descriptor_free_bytes(bytes: *mut u8);
+
+    pub fn descriptor_free_pubkeys(pubkeys: *mut *mut u8, lens: *mut usize, count: usize);
+
+    pub fn descriptor_version() -> *const ::std::os::raw::c_char;
+}
 "#;
 
     std::fs::write(out_dir.join("bindings.rs"), stub_bindings)
