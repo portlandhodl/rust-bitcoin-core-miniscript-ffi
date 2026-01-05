@@ -27,15 +27,16 @@
 //! # Example
 //!
 //! ```ignore
-//! use miniscript_core_ffi::{Descriptor, DescriptorNetwork};
+//! use miniscript_core_ffi::{Descriptor, Network};
 //!
-//! // Parse a wpkh descriptor with a tpub
-//! let desc = Descriptor::parse("wpkh(tpub.../0/*)")?;
+//! // Parse a wpkh descriptor with a tpub using builder pattern
+//! let desc = Descriptor::for_network(Network::Testnet)
+//!     .parse("wpkh(tpub.../0/*)")?;
 //!
 //! // Check if descriptor has wildcards
 //! if desc.is_range() {
 //!     // Derive address at index 0
-//!     let address = desc.get_address(0, DescriptorNetwork::Testnet)?;
+//!     let address = desc.get_address(0)?;
 //!     println!("Address: {}", address);
 //! }
 //! ```
@@ -44,39 +45,53 @@ use crate::ffi;
 use std::ffi::{CStr, CString};
 use std::ptr;
 
-/// Network type for address generation.
+/// Network type for address generation and key parsing.
 ///
-/// Specifies which Bitcoin network to use when encoding addresses.
-/// Different networks use different address prefixes.
+/// Specifies which Bitcoin network to use when parsing descriptors and
+/// encoding addresses. Different networks use different key prefixes:
+///
+/// - **Mainnet**: Uses `xpub`/`xprv` keys, addresses start with `1`, `3`, or `bc1`
+/// - **Testnet/Signet**: Uses `tpub`/`tprv` keys, addresses start with `m`, `n`, `2`, or `tb1`
+/// - **Regtest**: Uses `tpub`/`tprv` keys, addresses start with `bcrt1`
 ///
 /// # Example
 ///
 /// ```rust,no_run
 /// use miniscript_core_ffi::DescriptorNetwork;
 ///
-/// // Use testnet for development
+/// // Use testnet for development (tpub keys)
 /// let network = DescriptorNetwork::Testnet;
 ///
-/// // Use mainnet for production
+/// // Use mainnet for production (xpub keys)
 /// let network = DescriptorNetwork::Mainnet;
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Network {
     /// Bitcoin mainnet.
     ///
+    /// Uses `xpub`/`xprv` keys.
     /// Addresses start with `1`, `3`, or `bc1`.
     Mainnet,
-    /// Bitcoin testnet.
+    /// Bitcoin testnet (testnet3).
     ///
+    /// Uses `tpub`/`tprv` keys.
     /// Addresses start with `m`, `n`, `2`, or `tb1`.
     Testnet,
+    /// Bitcoin testnet4.
+    ///
+    /// Uses `tpub`/`tprv` keys.
+    /// The newer testnet version with improved reset mechanism.
+    /// Addresses use the same format as testnet3.
+    Testnet4,
     /// Bitcoin signet.
     ///
+    /// Uses `tpub`/`tprv` keys.
     /// A centralized test network with signed blocks.
     /// Addresses use the same format as testnet.
     Signet,
     /// Bitcoin regtest.
     ///
+    /// Uses `tpub`/`tprv` keys.
     /// Local regression testing network.
     /// Addresses start with `bcrt1`.
     Regtest,
@@ -87,63 +102,57 @@ impl Network {
     const fn to_ffi(self) -> ffi::DescriptorNetwork {
         match self {
             Self::Mainnet => ffi::DescriptorNetwork::DESCRIPTOR_NETWORK_MAINNET,
-            Self::Testnet => ffi::DescriptorNetwork::DESCRIPTOR_NETWORK_TESTNET,
+            Self::Testnet | Self::Testnet4 => ffi::DescriptorNetwork::DESCRIPTOR_NETWORK_TESTNET,
             Self::Signet => ffi::DescriptorNetwork::DESCRIPTOR_NETWORK_SIGNET,
             Self::Regtest => ffi::DescriptorNetwork::DESCRIPTOR_NETWORK_REGTEST,
         }
     }
 }
 
-/// A parsed Bitcoin descriptor with full key derivation support.
+impl From<bitcoin::Network> for Network {
+    fn from(network: bitcoin::Network) -> Self {
+        match network {
+            bitcoin::Network::Bitcoin => Self::Mainnet,
+            bitcoin::Network::Testnet => Self::Testnet,
+            bitcoin::Network::Testnet4 => Self::Testnet4,
+            bitcoin::Network::Signet => Self::Signet,
+            bitcoin::Network::Regtest => Self::Regtest,
+        }
+    }
+}
+
+impl From<Network> for bitcoin::Network {
+    fn from(network: Network) -> Self {
+        match network {
+            Network::Mainnet => Self::Bitcoin,
+            Network::Testnet => Self::Testnet,
+            Network::Testnet4 => Self::Testnet4,
+            Network::Signet => Self::Signet,
+            Network::Regtest => Self::Regtest,
+        }
+    }
+}
+
+/// Builder for parsing descriptors with a specific network context.
 ///
-/// This wraps Bitcoin Core's descriptor implementation, providing:
-/// - Full BIP32 key derivation from xpubs/tpubs
-/// - Address generation at any derivation index
-/// - Public key extraction
-/// - Script expansion
-///
-/// # Thread Safety
-///
-/// `Descriptor` implements `Send`, making it safe to transfer between threads.
-/// However, it does not implement `Sync` - use appropriate synchronization
-/// if you need to share a descriptor across threads.
-///
-/// # Memory Management
-///
-/// The struct owns the underlying C++ object and will free it when dropped.
+/// Created via [`Descriptor::for_network()`]. This builder holds the network
+/// context and provides the `parse()` method to create descriptors.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use miniscript_core_ffi::{Descriptor, DescriptorNetwork};
+/// use miniscript_core_ffi::{Descriptor, Network};
 ///
-/// let desc = Descriptor::parse("wpkh(tpub.../0/*)")?;
-///
-/// // Get address at index 0
-/// if let Some(addr) = desc.get_address(0, DescriptorNetwork::Testnet) {
-///     println!("Address: {}", addr);
-/// }
-///
-/// // Get the script
-/// if let Some(script) = desc.expand(0) {
-///     println!("Script: {} bytes", script.len());
-/// }
+/// let desc = Descriptor::for_network(Network::Testnet)
+///     .parse("wpkh(tpub.../0/*)")?;
 /// ```
-pub struct Descriptor {
-    /// Raw pointer to the C++ `DescriptorNode` object.
-    node: *mut ffi::DescriptorNode,
+#[derive(Debug, Clone, Copy)]
+pub struct DescriptorBuilder {
+    network: Network,
 }
 
-// Safety: DescriptorNode is only accessed through FFI calls which are thread-safe
-unsafe impl Send for Descriptor {}
-
-impl Descriptor {
-    /// Parse a descriptor string.
-    ///
-    /// Supports all standard descriptor types:
-    /// - `pk()`, `pkh()`, `wpkh()`, `sh()`, `wsh()`, `tr()`
-    /// - `multi()`, `sortedmulti()`
-    /// - Miniscript expressions
+impl DescriptorBuilder {
+    /// Parse a descriptor string with this builder's network context.
     ///
     /// # Arguments
     ///
@@ -155,27 +164,36 @@ impl Descriptor {
     ///
     /// # Errors
     ///
-    /// Returns an error if the descriptor string is invalid or cannot be parsed.
+    /// Returns an error if:
+    /// - The descriptor string is invalid
+    /// - The key prefixes don't match the network (e.g., tpub on mainnet)
     ///
     /// # Example
     ///
     /// ```ignore
-    /// use miniscript_core_ffi::Descriptor;
+    /// use miniscript_core_ffi::{Descriptor, Network};
     ///
-    /// // Parse a simple wpkh descriptor
-    /// let desc = Descriptor::parse("wpkh(tpub.../0/*)")?;
+    /// // Parse a testnet descriptor with tpub
+    /// let desc = Descriptor::for_network(Network::Testnet)
+    ///     .parse("wpkh(tpubD6NzVbkrYhZ4.../0/*)")?;
     ///
-    /// // Parse a multisig descriptor
-    /// let multi = Descriptor::parse("wsh(multi(2,key1,key2,key3))")?;
+    /// // Parse a mainnet descriptor with xpub
+    /// let desc = Descriptor::for_network(Network::Mainnet)
+    ///     .parse("wpkh(xpub68NZiKmJWnxxS.../0/*)")?;
     /// ```
-    pub fn parse(descriptor: &str) -> Result<Self, String> {
+    pub fn parse(self, descriptor: &str) -> Result<Descriptor, String> {
         let c_str = CString::new(descriptor).map_err(|e| e.to_string())?;
         let mut node: *mut ffi::DescriptorNode = ptr::null_mut();
 
-        let result = unsafe { ffi::descriptor_parse(c_str.as_ptr(), &raw mut node) };
+        let result = unsafe {
+            ffi::descriptor_parse_with_network(c_str.as_ptr(), self.network.to_ffi(), &raw mut node)
+        };
 
         if result.success {
-            Ok(Self { node })
+            Ok(Descriptor {
+                node,
+                network: self.network,
+            })
         } else {
             let error = if result.error_message.is_null() {
                 "Unknown error parsing descriptor".to_string()
@@ -190,6 +208,122 @@ impl Descriptor {
         }
     }
 
+    /// Get the network this builder is configured for.
+    #[must_use]
+    pub const fn network(&self) -> Network {
+        self.network
+    }
+}
+
+/// A parsed Bitcoin descriptor with full key derivation support.
+///
+/// This wraps Bitcoin Core's descriptor implementation, providing:
+/// - Full BIP32 key derivation from xpubs/tpubs
+/// - Address generation at any derivation index
+/// - Public key extraction
+/// - Script expansion
+///
+/// # Network Context
+///
+/// The `Descriptor` stores the network it was created with. This network
+/// determines:
+/// - Which key prefixes are valid (`xpub` for mainnet, `tpub` for testnet)
+/// - How addresses are encoded
+///
+/// # Creating Descriptors
+///
+/// Use the builder pattern with [`Descriptor::for_network()`]:
+///
+/// ```ignore
+/// use miniscript_core_ffi::{Descriptor, Network};
+///
+/// let desc = Descriptor::for_network(Network::Testnet)
+///     .parse("wpkh(tpub.../0/*)")?;
+/// ```
+///
+/// # Thread Safety
+///
+/// `Descriptor` implements `Send`, making it safe to transfer between threads.
+/// However, it does not implement `Sync` - use appropriate synchronization
+/// if you need to share a descriptor across threads.
+///
+/// # Memory Management
+///
+/// The struct owns the underlying C++ object and will free it when dropped.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniscript_core_ffi::{Descriptor, Network};
+///
+/// // Parse a testnet descriptor
+/// let desc = Descriptor::for_network(Network::Testnet)
+///     .parse("wpkh(tpub.../0/*)")?;
+///
+/// // Get address at index 0 (uses stored network context)
+/// if let Some(addr) = desc.get_address(0) {
+///     println!("Address: {}", addr);
+/// }
+///
+/// // Get the script
+/// if let Some(script) = desc.expand(0) {
+///     println!("Script: {} bytes", script.len());
+/// }
+/// ```
+pub struct Descriptor {
+    /// Raw pointer to the C++ `DescriptorNode` object.
+    node: *mut ffi::DescriptorNode,
+    /// The network this descriptor was parsed with.
+    network: Network,
+}
+
+// Safety: DescriptorNode is only accessed through FFI calls which are thread-safe
+unsafe impl Send for Descriptor {}
+
+impl Descriptor {
+    /// Create a builder for parsing descriptors with the specified network.
+    ///
+    /// This is the entry point for creating descriptors. The network determines
+    /// which key prefixes are valid:
+    /// - **Mainnet**: Accepts `xpub`/`xprv` keys
+    /// - **Testnet/Signet/Regtest**: Accepts `tpub`/`tprv` keys
+    ///
+    /// # Arguments
+    ///
+    /// * `network` - The network context for key parsing and address encoding
+    ///
+    /// # Returns
+    ///
+    /// A [`DescriptorBuilder`] that can be used to parse descriptor strings.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use miniscript_core_ffi::{Descriptor, Network};
+    ///
+    /// // For testnet (tpub keys)
+    /// let desc = Descriptor::for_network(Network::Testnet)
+    ///     .parse("wpkh(tpub.../0/*)")?;
+    ///
+    /// // For mainnet (xpub keys)
+    /// let desc = Descriptor::for_network(Network::Mainnet)
+    ///     .parse("wpkh(xpub.../0/*)")?;
+    /// ```
+    #[must_use]
+    pub const fn for_network(network: Network) -> DescriptorBuilder {
+        DescriptorBuilder { network }
+    }
+
+    /// Get the network this descriptor was parsed with.
+    ///
+    /// # Returns
+    ///
+    /// The network used for key parsing and address encoding.
+    #[must_use]
+    pub const fn network(&self) -> Network {
+        self.network
+    }
+
     /// Check if the descriptor is ranged (contains wildcards like `/*`).
     ///
     /// Ranged descriptors can derive multiple addresses by specifying
@@ -202,10 +336,12 @@ impl Descriptor {
     /// # Example
     ///
     /// ```ignore
-    /// let ranged = Descriptor::parse("wpkh(tpub.../0/*)")?;
+    /// let ranged = Descriptor::for_network(Network::Testnet)
+    ///     .parse("wpkh(tpub.../0/*)")?;
     /// assert!(ranged.is_range());
     ///
-    /// let fixed = Descriptor::parse("wpkh(pubkey)")?;
+    /// let fixed = Descriptor::for_network(Network::Testnet)
+    ///     .parse("wpkh(pubkey)")?;
     /// assert!(!fixed.is_range());
     /// ```
     #[must_use]
@@ -264,7 +400,8 @@ impl Descriptor {
     /// # Example
     ///
     /// ```ignore
-    /// let desc = Descriptor::parse("wpkh(tpub.../0/*)")?;
+    /// let desc = Descriptor::for_network(Network::Testnet)
+    ///     .parse("wpkh(tpub.../0/*)")?;
     ///
     /// // Get scripts for first 3 addresses
     /// for i in 0..3 {
@@ -300,12 +437,11 @@ impl Descriptor {
     /// Get the address for the descriptor at a specific index.
     ///
     /// This expands the descriptor and encodes the resulting script
-    /// as an address for the specified network.
+    /// as an address for the network this descriptor was created with.
     ///
     /// # Arguments
     ///
     /// * `index` - The derivation index
-    /// * `network` - The network for address encoding
     ///
     /// # Returns
     ///
@@ -314,18 +450,20 @@ impl Descriptor {
     /// # Example
     ///
     /// ```ignore
-    /// use miniscript_core_ffi::{Descriptor, DescriptorNetwork};
+    /// use miniscript_core_ffi::{Descriptor, Network};
     ///
-    /// let desc = Descriptor::parse("wpkh(tpub.../0/*)")?;
+    /// let desc = Descriptor::for_network(Network::Testnet)
+    ///     .parse("wpkh(tpub.../0/*)")?;
     ///
     /// // Get testnet address at index 0
-    /// let address = desc.get_address(0, DescriptorNetwork::Testnet);
+    /// let address = desc.get_address(0);
     /// // Returns something like "tb1q..."
     /// ```
     #[must_use]
     #[allow(clippy::cast_possible_wrap)]
-    pub fn get_address(&self, index: u32, network: Network) -> Option<String> {
-        let ptr = unsafe { ffi::descriptor_get_address(self.node, index as i32, network.to_ffi()) };
+    pub fn get_address(&self, index: u32) -> Option<String> {
+        let ptr =
+            unsafe { ffi::descriptor_get_address(self.node, index as i32, self.network.to_ffi()) };
 
         if ptr.is_null() {
             return None;
@@ -354,7 +492,8 @@ impl Descriptor {
     /// # Example
     ///
     /// ```ignore
-    /// let desc = Descriptor::parse("wsh(multi(2,tpub1.../0/*,tpub2.../0/*))")?;
+    /// let desc = Descriptor::for_network(Network::Testnet)
+    ///     .parse("wsh(multi(2,tpub1.../0/*,tpub2.../0/*))")?;
     ///
     /// if let Some(keys) = desc.get_pubkeys(0) {
     ///     println!("Found {} public keys", keys.len());
@@ -536,23 +675,44 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_wpkh_descriptor() {
-        // Simple wpkh descriptor with a tpub
-        let desc_str = "wpkh(tpubD6NzVbkrYhZ4WaWSyoBvQwbpLkojyoTZPRsgXELWz3Popb3qkjcJyJUGLnL4qHHoQvao8ESaAstxYSnhyswJ76uZPStJRJCTKvosUCnZW1U/0/*)";
+    fn test_tpub_descriptor_with_testnet() {
+        // Parse tpub descriptor with testnet network using builder pattern
+        // Using a known-good tpub from the test suite
+        let desc_str = "wpkh(tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/*)";
 
-        match Descriptor::parse(desc_str) {
+        match Descriptor::for_network(Network::Testnet).parse(desc_str) {
             Ok(desc) => {
-                println!("Parsed descriptor successfully");
+                println!("Parsed tpub descriptor successfully!");
+                println!("Network: {:?}", desc.network());
                 println!("Is range: {}", desc.is_range());
                 println!("Is solvable: {}", desc.is_solvable());
-
-                if let Some(s) = desc.to_string() {
-                    println!("To string: {s}");
-                }
+                assert!(desc.is_range());
+                assert!(desc.is_solvable());
+                assert_eq!(desc.network(), Network::Testnet);
             }
             Err(e) => {
-                println!("Failed to parse: {e}");
-                // This is expected if the full descriptor layer isn't linked yet
+                panic!("Failed to parse tpub descriptor: {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_xpub_descriptor_with_mainnet() {
+        // Parse xpub descriptor with mainnet network using builder pattern
+        let desc_str = "wpkh(xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y/0)";
+
+        match Descriptor::for_network(Network::Mainnet).parse(desc_str) {
+            Ok(desc) => {
+                println!("Parsed xpub descriptor successfully!");
+                println!("Network: {:?}", desc.network());
+                println!("Is range: {}", desc.is_range());
+                println!("Is solvable: {}", desc.is_solvable());
+                assert!(!desc.is_range());
+                assert!(desc.is_solvable());
+                assert_eq!(desc.network(), Network::Mainnet);
+            }
+            Err(e) => {
+                panic!("Failed to parse xpub descriptor: {e}");
             }
         }
     }

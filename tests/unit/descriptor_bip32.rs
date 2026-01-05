@@ -5,14 +5,16 @@
 
 use miniscript_core_ffi::descriptor::{Descriptor, Network};
 
-/// Helper to check if descriptor parsing succeeds
+/// Helper to check if descriptor parsing succeeds (uses mainnet for xpub keys)
 fn check_parse_success(desc_str: &str) -> Descriptor {
-    Descriptor::parse(desc_str).unwrap_or_else(|e| panic!("Failed to parse '{desc_str}': {e}"))
+    Descriptor::for_network(Network::Mainnet)
+        .parse(desc_str)
+        .unwrap_or_else(|e| panic!("Failed to parse '{desc_str}': {e}"))
 }
 
 /// Helper to check if descriptor parsing fails with expected error
 fn check_parse_failure(desc_str: &str, expected_error_contains: &str) {
-    match Descriptor::parse(desc_str) {
+    match Descriptor::for_network(Network::Mainnet).parse(desc_str) {
         Ok(_) => panic!("Expected '{desc_str}' to fail parsing, but it succeeded"),
         Err(e) => {
             assert!(
@@ -162,8 +164,8 @@ fn test_tr_with_xpub_ranged() {
         assert!(desc.expand(i).is_some(), "Should expand at index {i}");
     }
 
-    // Verify mainnet address derivation (library uses mainnet params)
-    let addr = desc.get_address(0, Network::Mainnet);
+    // Verify mainnet address derivation (network is stored in descriptor from for_network)
+    let addr = desc.get_address(0);
     if let Some(a) = addr {
         assert!(a.starts_with("bc1"), "Expected mainnet address, got {a}");
     }
@@ -273,13 +275,9 @@ fn test_address_derivation_consistency() {
     let desc_str = "wpkh(xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/1/2/*)";
     let desc = check_parse_success(desc_str);
 
-    // Get address at index 0 multiple times
-    let addr1 = desc
-        .get_address(0, Network::Testnet)
-        .expect("Should get address");
-    let addr2 = desc
-        .get_address(0, Network::Testnet)
-        .expect("Should get address");
+    // Get address at index 0 multiple times (network is stored in descriptor from for_network)
+    let addr1 = desc.get_address(0).expect("Should get address");
+    let addr2 = desc.get_address(0).expect("Should get address");
 
     assert_eq!(addr1, addr2, "Same index should produce same address");
 }

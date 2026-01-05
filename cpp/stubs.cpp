@@ -190,8 +190,8 @@ static MainnetChainParams g_mainnet_params;
 static TestnetChainParams g_testnet_params;
 static RegtestChainParams g_regtest_params;
 
-// Current active chain params (default to mainnet for xpub parsing)
-static const CChainParams* g_current_params = &g_mainnet_params;
+// Current active chain params (default to testnet for tpub parsing)
+static const CChainParams* g_current_params = &g_testnet_params;
 
 // Params() returns the currently selected chain parameters
 // This is the global function that Bitcoin Core's key_io.cpp uses
@@ -218,6 +218,14 @@ void SelectParams(int network) {
             g_current_params = &g_mainnet_params;
             break;
     }
+}
+
+// Include the header for DescriptorNetwork enum
+#include "descriptor_wrapper.h"
+
+// Exported function to select chain parameters from Rust
+extern "C" void descriptor_select_params(DescriptorNetwork network) {
+    SelectParams(static_cast<int>(network));
 }
 
 // Taproot hash stubs

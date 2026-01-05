@@ -41,13 +41,14 @@ typedef struct {
 } PubKeyInfo;
 
 /**
- * Parse a descriptor string.
+ * Parse a descriptor string with network context.
  *
  * @param descriptor_str The descriptor string to parse (e.g., "wsh(multi(2,...))")
+ * @param network The network to use for key parsing (determines xpub vs tpub)
  * @param out_node Output pointer for the parsed descriptor
  * @return Result indicating success or failure with error message
  */
-DescriptorResult descriptor_parse(const char* descriptor_str, DescriptorNode** out_node);
+DescriptorResult descriptor_parse_with_network(const char* descriptor_str, DescriptorNetwork network, DescriptorNode** out_node);
 
 /**
  * Check if the descriptor is ranged (contains wildcards).
@@ -140,6 +141,18 @@ void descriptor_free_pubkeys(uint8_t** pubkeys, size_t* lens, size_t count);
  * Get the descriptor wrapper version.
  */
 const char* descriptor_version(void);
+
+/**
+ * Select the chain parameters for key parsing.
+ * Must be called before parsing descriptors with network-specific keys (xpub/tpub).
+ *
+ * @param network The network to use:
+ *   - DESCRIPTOR_NETWORK_MAINNET (0): Use mainnet params (xpub/xprv)
+ *   - DESCRIPTOR_NETWORK_TESTNET (1): Use testnet params (tpub/tprv)
+ *   - DESCRIPTOR_NETWORK_SIGNET (2): Use signet params (same as testnet)
+ *   - DESCRIPTOR_NETWORK_REGTEST (3): Use regtest params (tpub/tprv)
+ */
+void descriptor_select_params(DescriptorNetwork network);
 
 #ifdef __cplusplus
 }

@@ -195,8 +195,9 @@ use miniscript_core_ffi::descriptor::{Descriptor, Network};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse a wpkh descriptor with an extended public key
-    let desc = Descriptor::parse(
-        "wpkh(tpubD6NzVbkrYhZ4WaWSyoBvQwbpLkojyoTZPRsgXELWz3Popb3qkjcJyJUGLnL4qHHoQvao8ESaAstxYSnhyswJ76uZPStJRJCTKvosUCnZW1U/0/*)"
+    // Use the builder pattern: Descriptor::for_network(network).parse(str)
+    let desc = Descriptor::for_network(Network::Testnet).parse(
+        "wpkh(tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/*)"
     )?;
 
     // Check if it's a ranged descriptor
@@ -204,8 +205,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Is solvable: {}", desc.is_solvable());
 
     // Derive addresses at different indices
+    // Network is stored in the descriptor, so get_address only takes the index
     for i in 0..5 {
-        if let Some(addr) = desc.get_address(i, Network::Testnet) {
+        if let Some(addr) = desc.get_address(i) {
             println!("Address {}: {}", i, addr);
         }
     }
@@ -297,8 +299,12 @@ Bitcoin Core descriptor with full key derivation support.
 
 ```rust
 impl Descriptor {
-    /// Parse a descriptor string
-    pub fn parse(descriptor: &str) -> Result<Self, String>;
+    /// Create a builder for parsing descriptors with the specified network
+    /// Use: Descriptor::for_network(Network::Testnet).parse("wpkh(tpub...)")
+    pub fn for_network(network: Network) -> DescriptorBuilder;
+
+    /// Get the network this descriptor was parsed with
+    pub fn network(&self) -> Network;
 
     /// Check if the descriptor is ranged (contains wildcards)
     pub fn is_range(&self) -> bool;
@@ -312,8 +318,8 @@ impl Descriptor {
     /// Expand to script bytes at a specific index
     pub fn expand(&self, index: u32) -> Option<Vec<u8>>;
 
-    /// Get address at a specific index
-    pub fn get_address(&self, index: u32, network: Network) -> Option<String>;
+    /// Get address at a specific index (uses stored network)
+    pub fn get_address(&self, index: u32) -> Option<String>;
 
     /// Get all public keys at a specific index
     pub fn get_pubkeys(&self, index: u32) -> Option<Vec<Vec<u8>>>;
@@ -323,6 +329,14 @@ impl Descriptor {
 
     /// Get maximum satisfaction weight
     pub fn max_satisfaction_weight(&self, use_max_sig: bool) -> Option<i64>;
+}
+
+impl DescriptorBuilder {
+    /// Parse a descriptor string with this builder's network context
+    pub fn parse(self, descriptor: &str) -> Result<Descriptor, String>;
+
+    /// Get the network this builder is configured for
+    pub fn network(&self) -> Network;
 }
 ```
 

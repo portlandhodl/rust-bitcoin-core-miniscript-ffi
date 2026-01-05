@@ -7,12 +7,14 @@ use miniscript_core_ffi::descriptor::{Descriptor, Network};
 
 /// Helper to check if descriptor parsing succeeds
 fn check_parse_success(desc_str: &str) -> Descriptor {
-    Descriptor::parse(desc_str).unwrap_or_else(|e| panic!("Failed to parse '{desc_str}': {e}"))
+    Descriptor::for_network(Network::Mainnet)
+        .parse(desc_str)
+        .unwrap_or_else(|e| panic!("Failed to parse '{desc_str}': {e}"))
 }
 
 /// Helper to check if descriptor parsing fails with expected error
 fn check_parse_failure(desc_str: &str, expected_error_contains: &str) {
-    match Descriptor::parse(desc_str) {
+    match Descriptor::for_network(Network::Mainnet).parse(desc_str) {
         Ok(_) => panic!("Expected '{desc_str}' to fail parsing, but it succeeded"),
         Err(e) => {
             assert!(
@@ -321,8 +323,8 @@ fn test_get_address_wpkh() {
         "wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
     );
 
-    // Get mainnet address (library uses mainnet params)
-    if let Some(addr) = desc.get_address(0, Network::Mainnet) {
+    // Get mainnet address (network is stored in descriptor from for_network)
+    if let Some(addr) = desc.get_address(0) {
         // Should be a valid bech32 mainnet address
         assert!(
             addr.starts_with("bc1"),
@@ -338,8 +340,8 @@ fn test_get_address_tr() {
     let desc =
         check_parse_success("tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)");
 
-    // Get mainnet address (library uses mainnet params)
-    if let Some(addr) = desc.get_address(0, Network::Mainnet) {
+    // Get mainnet address (network is stored in descriptor from for_network)
+    if let Some(addr) = desc.get_address(0) {
         // Should be a valid bech32m mainnet address
         assert!(
             addr.starts_with("bc1"),

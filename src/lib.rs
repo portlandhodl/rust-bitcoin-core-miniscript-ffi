@@ -231,7 +231,8 @@ use ffi::{
 // Descriptor module
 pub mod descriptor;
 pub use descriptor::{
-    Descriptor, Network as DescriptorNetwork, descriptor_version, get_descriptor_checksum,
+    Descriptor, DescriptorBuilder, Network as DescriptorNetwork, descriptor_version,
+    get_descriptor_checksum,
 };
 
 use std::collections::HashMap;

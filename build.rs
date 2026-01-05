@@ -319,8 +319,9 @@ pub struct DescriptorResult {
 }
 
 unsafe extern "C" {
-    pub fn descriptor_parse(
+    pub fn descriptor_parse_with_network(
         descriptor_str: *const ::std::os::raw::c_char,
+        network: DescriptorNetwork,
         out_node: *mut *mut DescriptorNode,
     ) -> DescriptorResult;
 

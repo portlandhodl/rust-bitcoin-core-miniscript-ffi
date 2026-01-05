@@ -41,12 +41,15 @@ static char* strdup_safe(const std::string& str) {
     return strdup_safe(str.c_str());
 }
 
-// Store the network for address encoding
-static DescriptorNetwork g_current_network = DESCRIPTOR_NETWORK_TESTNET;
+// Forward declaration for SelectParams
+void SelectParams(int network);
 
 extern "C" {
 
-DescriptorResult descriptor_parse(const char* descriptor_str, DescriptorNode** out_node) {
+DescriptorResult descriptor_parse_with_network(const char* descriptor_str, DescriptorNetwork network, DescriptorNode** out_node) {
+    // Select the appropriate chain params before parsing
+    SelectParams(static_cast<int>(network));
+
     DescriptorResult result = {false, nullptr};
 
     if (!descriptor_str || !out_node) {
