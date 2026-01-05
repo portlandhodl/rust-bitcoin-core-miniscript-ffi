@@ -1,7 +1,7 @@
 //! Descriptor Parsing Tests - Part 1 of 5
 //!
 //! Tests basic descriptor parsing, key formats, and simple miniscript components.
-//! Based on Bitcoin Core's descriptor_tests.cpp
+//! Based on Bitcoin Core's `descriptor_tests.cpp`
 
 use miniscript_core_ffi::{Context, Miniscript};
 
@@ -37,11 +37,11 @@ fn test_multi_parsing() {
 
     for (ms_str, desc) in test_cases {
         let ms = Miniscript::from_str(ms_str, Context::Wsh);
-        assert!(ms.is_ok(), "{} should parse", desc);
+        assert!(ms.is_ok(), "{desc} should parse");
 
         let ms = ms.unwrap();
-        assert!(ms.is_valid(), "{} should be valid", desc);
-        assert!(ms.is_sane(), "{} should be sane", desc);
+        assert!(ms.is_valid(), "{desc} should be valid");
+        assert!(ms.is_sane(), "{desc} should be sane");
     }
 }
 
@@ -197,10 +197,7 @@ fn test_nested_combinators() {
 fn test_deep_nesting() {
     // Test deeper nesting with proper type wrappers
     // or_b needs B and W types, and_v needs V and B types
-    let ms = Miniscript::from_str(
-        "and_v(v:pk(A),or_b(pk(B),s:pk(C)))",
-        Context::Wsh
-    );
+    let ms = Miniscript::from_str("and_v(v:pk(A),or_b(pk(B),s:pk(C)))", Context::Wsh);
     assert!(ms.is_ok(), "Deep nesting should parse");
 
     let ms = ms.unwrap();
@@ -224,8 +221,7 @@ fn test_sortedmulti_parsing() {
     let ms = Miniscript::from_str("sortedmulti(2,A,B,C)", Context::Wsh);
     // Note: sortedmulti may not be supported in all contexts
     // This test verifies parsing behavior
-    if ms.is_ok() {
-        let ms = ms.unwrap();
+    if let Ok(ms) = ms {
         assert!(ms.is_valid(), "sortedmulti should be valid if supported");
     }
 }
@@ -341,6 +337,6 @@ fn test_placeholder_key_names() {
     for placeholder in placeholders {
         let ms_str = format!("pk({placeholder})");
         let ms = Miniscript::from_str(&ms_str, Context::Wsh);
-        assert!(ms.is_ok(), "pk({}) should parse", placeholder);
+        assert!(ms.is_ok(), "pk({placeholder}) should parse");
     }
 }

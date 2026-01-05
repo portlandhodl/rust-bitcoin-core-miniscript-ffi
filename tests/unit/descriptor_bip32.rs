@@ -7,8 +7,7 @@ use miniscript_core_ffi::descriptor::{Descriptor, Network};
 
 /// Helper to check if descriptor parsing succeeds
 fn check_parse_success(desc_str: &str) -> Descriptor {
-    Descriptor::parse(desc_str)
-        .unwrap_or_else(|e| panic!("Failed to parse '{desc_str}': {e}"))
+    Descriptor::parse(desc_str).unwrap_or_else(|e| panic!("Failed to parse '{desc_str}': {e}"))
 }
 
 /// Helper to check if descriptor parsing fails with expected error
@@ -52,9 +51,18 @@ fn test_xpub_with_wildcard() {
     let script2 = desc.expand(2).expect("Should expand at index 2");
 
     // Scripts at different indices should be different
-    assert_ne!(script0, script1, "Scripts at different indices should differ");
-    assert_ne!(script1, script2, "Scripts at different indices should differ");
-    assert_ne!(script0, script2, "Scripts at different indices should differ");
+    assert_ne!(
+        script0, script1,
+        "Scripts at different indices should differ"
+    );
+    assert_ne!(
+        script1, script2,
+        "Scripts at different indices should differ"
+    );
+    assert_ne!(
+        script0, script2,
+        "Scripts at different indices should differ"
+    );
 }
 
 #[test]
@@ -95,7 +103,7 @@ fn test_fingerprint_too_long() {
     // Fingerprint must be exactly 8 hex characters (4 bytes)
     check_parse_failure(
         "pkh([012345678]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL)",
-        "Fingerprint is not 4 bytes"
+        "Fingerprint is not 4 bytes",
     );
 }
 
@@ -104,7 +112,7 @@ fn test_fingerprint_too_short() {
     // Fingerprint must be exactly 8 hex characters (4 bytes)
     check_parse_failure(
         "pkh([aaaaaaa]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0)",
-        "Fingerprint is not 4 bytes"
+        "Fingerprint is not 4 bytes",
     );
 }
 
@@ -113,7 +121,7 @@ fn test_fingerprint_not_hex() {
     // Fingerprint must be valid hex
     check_parse_failure(
         "pkh([aaagaaaa]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0)",
-        "not hex"
+        "not hex",
     );
 }
 
@@ -122,7 +130,7 @@ fn test_path_value_overflow() {
     // BIP32 path element must not overflow uint32
     check_parse_failure(
         "pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/2147483648)",
-        "out of range"
+        "out of range",
     );
 }
 
@@ -131,12 +139,12 @@ fn test_path_value_not_uint() {
     // Path values must be valid uint32
     check_parse_failure(
         "pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/1aa)",
-        "not a valid uint32"
+        "not a valid uint32",
     );
 
     check_parse_failure(
         "pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/+1)",
-        "not a valid uint32"
+        "not a valid uint32",
     );
 }
 
@@ -166,15 +174,23 @@ fn test_apostrophe_vs_h_notation() {
     // Both ' and h should work for hardened derivation
     // Note: Bitcoin Core preserves the original notation (' vs h) in the string representation
     // but both parse to the same semantic meaning
-    let desc1 = check_parse_success("pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/2147483647'/0)");
-    let desc2 = check_parse_success("pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/2147483647h/0)");
+    let desc1 = check_parse_success(
+        "pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/2147483647'/0)",
+    );
+    let desc2 = check_parse_success(
+        "pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/2147483647h/0)",
+    );
 
     // Both should parse successfully and be solvable
     assert!(desc1.is_solvable(), "desc1 should be solvable");
     assert!(desc2.is_solvable(), "desc2 should be solvable");
 
     // Both should have the same range status
-    assert_eq!(desc1.is_range(), desc2.is_range(), "Both should have same range status");
+    assert_eq!(
+        desc1.is_range(),
+        desc2.is_range(),
+        "Both should have same range status"
+    );
 }
 
 #[test]
@@ -184,12 +200,16 @@ fn test_ranged_descriptor_multiple_expansions() {
     let desc = check_parse_success(desc_str);
 
     // Expected scripts from Bitcoin Core tests
-    let expected_scripts = ["0014326b2249e3a25d5dc60935f044ee835d090ba859",
+    let expected_scripts = [
+        "0014326b2249e3a25d5dc60935f044ee835d090ba859",
         "0014af0bd98abc2f2cae66e36896a39ffe2d32984fb7",
-        "00141fa798efd1cbf95cebf912c031b8a4a6e9fb9f27"];
+        "00141fa798efd1cbf95cebf912c031b8a4a6e9fb9f27",
+    ];
 
     for (i, expected) in expected_scripts.iter().enumerate() {
-        let script = desc.expand(u32::try_from(i).expect("index should fit in u32")).unwrap_or_else(|| panic!("Should expand at index {i}"));
+        let script = desc
+            .expand(u32::try_from(i).expect("index should fit in u32"))
+            .unwrap_or_else(|| panic!("Should expand at index {i}"));
         let script_hex = hex::encode(&script);
         assert_eq!(&script_hex, expected, "Script mismatch at index {i}");
     }
@@ -254,8 +274,12 @@ fn test_address_derivation_consistency() {
     let desc = check_parse_success(desc_str);
 
     // Get address at index 0 multiple times
-    let addr1 = desc.get_address(0, Network::Testnet).expect("Should get address");
-    let addr2 = desc.get_address(0, Network::Testnet).expect("Should get address");
+    let addr1 = desc
+        .get_address(0, Network::Testnet)
+        .expect("Should get address");
+    let addr2 = desc
+        .get_address(0, Network::Testnet)
+        .expect("Should get address");
 
     assert_eq!(addr1, addr2, "Same index should produce same address");
 }
@@ -300,6 +324,12 @@ fn test_non_ranged_descriptor_ignores_index() {
     let script1 = desc.expand(1).expect("Should expand");
     let script2 = desc.expand(2).expect("Should expand");
 
-    assert_eq!(script0, script1, "Non-ranged descriptor should produce same script");
-    assert_eq!(script1, script2, "Non-ranged descriptor should produce same script");
+    assert_eq!(
+        script0, script1,
+        "Non-ranged descriptor should produce same script"
+    );
+    assert_eq!(
+        script1, script2,
+        "Non-ranged descriptor should produce same script"
+    );
 }

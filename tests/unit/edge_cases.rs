@@ -101,7 +101,8 @@ fn test_script_roundtrip() {
     let script = ms.to_script().expect("Failed to get script");
 
     // Parse script back to miniscript
-    let ms2 = Miniscript::from_script_bytes(script.as_bytes(), Context::Wsh).expect("Failed to parse from script");
+    let ms2 = Miniscript::from_script_bytes(script.as_bytes(), Context::Wsh)
+        .expect("Failed to parse from script");
     let script2 = ms2
         .to_script()
         .expect("Failed to get script from roundtrip");

@@ -1,7 +1,7 @@
 //! Descriptor Complex Structures Tests - Part 4 of 5
 //!
 //! Tests complex miniscript structures including the production descriptor
-//! Based on Bitcoin Core's descriptor_tests.cpp
+//! Based on Bitcoin Core's `descriptor_tests.cpp`
 
 use miniscript_core_ffi::{Context, Miniscript};
 
@@ -50,7 +50,10 @@ fn test_nested_or_i() {
 #[test]
 fn test_thresh_with_mixed_fragments() {
     // thresh with different fragment types
-    let ms = Miniscript::from_str("thresh(2,pk(A),s:pk(B),s:pk(C),snl:after(100))", Context::Wsh);
+    let ms = Miniscript::from_str(
+        "thresh(2,pk(A),s:pk(B),s:pk(C),snl:after(100))",
+        Context::Wsh,
+    );
     assert!(ms.is_ok(), "thresh with mixed fragments should parse");
 
     let ms = ms.unwrap();
@@ -62,18 +65,33 @@ fn test_production_descriptor_structure() {
     // The full production descriptor structure (simplified with placeholders)
     let ms = Miniscript::from_str(
         "andor(multi(2,A,B,C),or_i(and_v(v:pkh(D),after(1748563200)),thresh(2,pk(E),s:pk(F),s:pk(G),snl:after(1735171200))),and_v(v:thresh(2,pkh(H),a:pkh(I),a:pkh(J)),after(1752451200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Production descriptor should parse");
 
     let ms = ms.unwrap();
     assert!(ms.is_valid(), "Production descriptor should be valid");
     assert!(ms.is_sane(), "Production descriptor should be sane");
-    assert!(ms.is_non_malleable(), "Production descriptor should be non-malleable");
-    assert!(!ms.has_timelock_mix(), "Production descriptor should not have timelock mixing");
-    assert!(ms.is_valid_top_level(), "Production descriptor should be valid at top level");
-    assert!(ms.check_ops_limit(), "Production descriptor should be within ops limit");
-    assert!(ms.check_stack_size(), "Production descriptor should be within stack size limit");
+    assert!(
+        ms.is_non_malleable(),
+        "Production descriptor should be non-malleable"
+    );
+    assert!(
+        !ms.has_timelock_mix(),
+        "Production descriptor should not have timelock mixing"
+    );
+    assert!(
+        ms.is_valid_top_level(),
+        "Production descriptor should be valid at top level"
+    );
+    assert!(
+        ms.check_ops_limit(),
+        "Production descriptor should be within ops limit"
+    );
+    assert!(
+        ms.check_stack_size(),
+        "Production descriptor should be within stack size limit"
+    );
 }
 
 #[test]
@@ -91,7 +109,10 @@ fn test_production_descriptor_components() {
     assert!(comp2.unwrap().is_valid(), "Component 2 should be valid");
 
     // Component 3: thresh with after - second branch of or_i
-    let comp3 = Miniscript::from_str("thresh(2,pk(A),s:pk(B),s:pk(C),snl:after(1735171200))", Context::Wsh);
+    let comp3 = Miniscript::from_str(
+        "thresh(2,pk(A),s:pk(B),s:pk(C),snl:after(1735171200))",
+        Context::Wsh,
+    );
     assert!(comp3.is_ok(), "Component 3 should parse");
     assert!(comp3.unwrap().is_valid(), "Component 3 should be valid");
 
@@ -101,7 +122,10 @@ fn test_production_descriptor_components() {
     assert!(comp4.unwrap().is_valid(), "Component 4 should be valid");
 
     // Component 5: and_v with v:thresh and after
-    let comp5 = Miniscript::from_str("and_v(v:thresh(2,pkh(A),a:pkh(B),a:pkh(C)),after(1752451200))", Context::Wsh);
+    let comp5 = Miniscript::from_str(
+        "and_v(v:thresh(2,pkh(A),a:pkh(B),a:pkh(C)),after(1752451200))",
+        Context::Wsh,
+    );
     assert!(comp5.is_ok(), "Component 5 should parse");
     assert!(comp5.unwrap().is_valid(), "Component 5 should be valid");
 }
@@ -111,7 +135,7 @@ fn test_production_descriptor_or_i_branch() {
     // Test the or_i branch of production descriptor
     let ms = Miniscript::from_str(
         "or_i(and_v(v:pkh(A),after(1748563200)),thresh(2,pk(B),s:pk(C),s:pk(D),snl:after(1735171200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "or_i branch should parse");
 
@@ -125,7 +149,7 @@ fn test_complex_multi_path_spending() {
     // Test a descriptor with multiple spending paths
     let ms = Miniscript::from_str(
         "or_i(and_v(v:pk(A),after(100)),or_i(and_v(v:pk(B),after(200)),pk(C)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Multi-path spending should parse");
 
@@ -138,7 +162,7 @@ fn test_deeply_nested_structure() {
     // Test deeply nested miniscript
     let ms = Miniscript::from_str(
         "and_v(v:pk(A),or_i(and_v(v:pk(B),pk(C)),or_i(pk(D),pk(E))))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Deeply nested structure should parse");
 
@@ -151,7 +175,7 @@ fn test_complex_thresh_structure() {
     // Complex thresh with various wrappers
     let ms = Miniscript::from_str(
         "thresh(3,pk(A),s:pk(B),s:pk(C),a:pk(D),snl:after(100))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Complex thresh should parse");
 
@@ -164,12 +188,15 @@ fn test_andor_with_timelock_branches() {
     // andor with timelocks in different branches
     let ms = Miniscript::from_str(
         "andor(pk(A),and_v(v:pk(B),after(100)),and_v(v:pk(C),after(200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "andor with timelock branches should parse");
 
     let ms = ms.unwrap();
-    assert!(ms.is_valid(), "andor with timelock branches should be valid");
+    assert!(
+        ms.is_valid(),
+        "andor with timelock branches should be valid"
+    );
 }
 
 #[test]
@@ -177,7 +204,7 @@ fn test_mixed_key_types_in_structure() {
     // Mix of pk and pkh in complex structure
     let ms = Miniscript::from_str(
         "or_i(and_v(v:pkh(A),pk(B)),and_v(v:pk(C),pkh(D)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Mixed key types should parse");
 
@@ -226,7 +253,10 @@ fn test_production_descriptor_script_generation() {
 
     if let Some(script) = ms.to_script() {
         assert!(!script.as_bytes().is_empty(), "Script should not be empty");
-        assert!(script.len() > 100, "Complex descriptor should have substantial script");
+        assert!(
+            script.len() > 100,
+            "Complex descriptor should have substantial script"
+        );
     } else {
         panic!("Failed to generate script");
     }
@@ -252,16 +282,17 @@ fn test_complex_structure_with_real_keys() {
     let tpub2 = "tpubDFQZzjy6GwSV6yk3X3aDZ6ETfoiNaquKhQHQ2EBG9jysaVqv7gMDBdUjYizYC1Sx8iQ41Rdxir64wcZrH8jZAeg8dhyGQFfKkGFkL3y6wnC";
     let tpub3 = "tpubDFNSUCdEmqX1HKkf3ykVz2VyuTsCja3dheQXiKmDyfDqTE9BD2Gmm3nszWRg8YBktEoTGYVS4waGqkEuycpiDnGcScrC2h4wVzDuq6RR7jT";
 
-    let ms_str = format!(
-        "andor(multi(2,{}/0/0,{}/0/0,{}/0/0),pk({}),pk({}))",
-        tpub1, tpub2, tpub3, tpub1, tpub2
-    );
+    let ms_str =
+        format!("andor(multi(2,{tpub1}/0/0,{tpub2}/0/0,{tpub3}/0/0),pk({tpub1}),pk({tpub2}))");
 
     let ms = Miniscript::from_str(&ms_str, Context::Wsh);
     assert!(ms.is_ok(), "Complex structure with real keys should parse");
 
     let ms = ms.unwrap();
-    assert!(ms.is_valid(), "Complex structure with real keys should be valid");
+    assert!(
+        ms.is_valid(),
+        "Complex structure with real keys should be valid"
+    );
 }
 
 #[test]
@@ -270,10 +301,16 @@ fn test_complex_structure_with_key_origins() {
     let ms_str = "andor(multi(2,[a0d3c79c/48'/1'/0'/2']A/0/0,[ea2484f9/48'/1'/0'/2']B/0/0,[93f245d7/48'/1'/0'/2']C/0/0),pk(D),pk(E))";
 
     let ms = Miniscript::from_str(ms_str, Context::Wsh);
-    assert!(ms.is_ok(), "Complex structure with key origins should parse");
+    assert!(
+        ms.is_ok(),
+        "Complex structure with key origins should parse"
+    );
 
     let ms = ms.unwrap();
-    assert!(ms.is_valid(), "Complex structure with key origins should be valid");
+    assert!(
+        ms.is_valid(),
+        "Complex structure with key origins should be valid"
+    );
 }
 
 #[test]
@@ -284,7 +321,7 @@ fn test_alternative_spending_paths() {
     // Path 3: Different single key after different timelock
     let ms = Miniscript::from_str(
         "or_i(multi(2,A,B,C),or_i(and_v(v:pk(D),after(100)),and_v(v:pk(E),after(200))))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Alternative spending paths should parse");
 
@@ -300,7 +337,7 @@ fn test_vault_like_structure() {
     // Recovery path: Single key after long timelock
     let ms = Miniscript::from_str(
         "or_i(multi(2,A,B,C),and_v(v:pk(RECOVERY),after(52560)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Vault-like structure should parse");
 
@@ -316,7 +353,7 @@ fn test_inheritance_like_structure() {
     // Heir can spend after timelock
     let ms = Miniscript::from_str(
         "or_i(pk(OWNER),and_v(v:pk(HEIR),after(1735171200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Inheritance structure should parse");
 
@@ -334,7 +371,7 @@ fn test_escrow_like_structure() {
     // thresh needs W type for 2nd+ args, so use s:pk
     let ms = Miniscript::from_str(
         "thresh(2,pk(BUYER),s:pk(SELLER),s:pk(ARBITER))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Escrow structure should parse");
 
@@ -353,7 +390,10 @@ fn test_complex_structure_max_satisfaction_size() {
 
     if let Some(max_sat_size) = ms.max_satisfaction_size() {
         assert!(max_sat_size > 0, "Should have non-zero satisfaction size");
-        assert!(max_sat_size < 10000, "Should have reasonable satisfaction size");
+        assert!(
+            max_sat_size < 10000,
+            "Should have reasonable satisfaction size"
+        );
     }
 }
 
@@ -372,17 +412,17 @@ fn test_complex_structure_stack_size() {
 
     if let Some(exec_stack_size) = ms.get_exec_stack_size() {
         assert!(exec_stack_size > 0, "Should have non-zero exec stack size");
-        assert!(exec_stack_size < 1000, "Should have reasonable exec stack size");
+        assert!(
+            exec_stack_size < 1000,
+            "Should have reasonable exec stack size"
+        );
     }
 }
 
 #[test]
 fn test_complex_structure_duplicate_keys() {
     // Test that duplicate key checking works on complex structures
-    let ms = Miniscript::from_str(
-        "andor(multi(2,A,B,C),pk(D),pk(E))",
-        Context::Wsh
-    ).unwrap();
+    let ms = Miniscript::from_str("andor(multi(2,A,B,C),pk(D),pk(E))", Context::Wsh).unwrap();
 
     // Should not have duplicate keys with different placeholders
     assert!(ms.check_duplicate_key(), "Should pass duplicate key check");
@@ -395,14 +435,14 @@ fn test_production_descriptor_with_wildcards() {
     let tpub2 = "tpubDFQZzjy6GwSV6yk3X3aDZ6ETfoiNaquKhQHQ2EBG9jysaVqv7gMDBdUjYizYC1Sx8iQ41Rdxir64wcZrH8jZAeg8dhyGQFfKkGFkL3y6wnC";
     let tpub3 = "tpubDFNSUCdEmqX1HKkf3ykVz2VyuTsCja3dheQXiKmDyfDqTE9BD2Gmm3nszWRg8YBktEoTGYVS4waGqkEuycpiDnGcScrC2h4wVzDuq6RR7jT";
 
-    let ms_str = format!(
-        "andor(multi(2,{}/0/*,{}/0/*,{}/0/*),pk(A),pk(B))",
-        tpub1, tpub2, tpub3
-    );
+    let ms_str = format!("andor(multi(2,{tpub1}/0/*,{tpub2}/0/*,{tpub3}/0/*),pk(A),pk(B))");
 
     let ms = Miniscript::from_str(&ms_str, Context::Wsh);
     assert!(ms.is_ok(), "Production pattern with wildcards should parse");
 
     let ms = ms.unwrap();
-    assert!(ms.is_valid(), "Production pattern with wildcards should be valid");
+    assert!(
+        ms.is_valid(),
+        "Production pattern with wildcards should be valid"
+    );
 }

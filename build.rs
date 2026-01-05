@@ -23,7 +23,10 @@ fn main() {
         .build();
 
     println!("cargo:rustc-link-search=native={}/lib", dst.display());
-    println!("cargo:rustc-link-search=native={}/build/secp256k1/lib", dst.display());
+    println!(
+        "cargo:rustc-link-search=native={}/build/secp256k1/lib",
+        dst.display()
+    );
     println!("cargo:rustc-link-lib=static=miniscript_wrapper");
     println!("cargo:rustc-link-lib=static=secp256k1");
 

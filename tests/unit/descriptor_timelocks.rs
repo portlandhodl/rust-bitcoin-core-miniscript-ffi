@@ -1,7 +1,7 @@
 //! Descriptor Timelock Tests - Part 3 of 5
 //!
 //! Tests timelock functionality (after, older) and timelock mixing rules
-//! Based on Bitcoin Core's descriptor_tests.cpp
+//! Based on Bitcoin Core's `descriptor_tests.cpp`
 
 use miniscript_core_ffi::{Context, Miniscript};
 
@@ -99,7 +99,7 @@ fn test_multiple_after_same_type() {
     // This should NOT cause timelock mixing
     let ms = Miniscript::from_str(
         "or_i(and_v(v:pk(A),after(1735171200)),and_v(v:pk(B),after(1748563200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Multiple after timestamps should parse");
 
@@ -113,7 +113,7 @@ fn test_multiple_older_same_type() {
     // Multiple older() with same type
     let ms = Miniscript::from_str(
         "or_i(and_v(v:pk(A),older(100)),and_v(v:pk(B),older(200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Multiple older should parse");
 
@@ -127,7 +127,7 @@ fn test_timelock_mixing_after_height_and_timestamp() {
     // Mixing block height and timestamp in after() - this IS timelock mixing
     let ms = Miniscript::from_str(
         "or_i(and_v(v:pk(A),after(100)),and_v(v:pk(B),after(1735171200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Mixed after types should parse");
 
@@ -137,7 +137,10 @@ fn test_timelock_mixing_after_height_and_timestamp() {
     // absolute (after) and relative (older) timelocks, not between
     // block height and timestamp within after(). Both are absolute timelocks.
     // So this does NOT cause timelock mixing in Bitcoin Core's definition.
-    assert!(!ms.has_timelock_mix(), "Same type (absolute) timelocks should not mix");
+    assert!(
+        !ms.has_timelock_mix(),
+        "Same type (absolute) timelocks should not mix"
+    );
 }
 
 #[test]
@@ -146,29 +149,32 @@ fn test_no_timelock_mixing_absolute_and_relative() {
     // They use different mechanisms (nLockTime vs nSequence)
     let ms = Miniscript::from_str(
         "or_i(and_v(v:pk(A),after(100)),and_v(v:pk(B),older(100)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "after and older should parse");
 
     let ms = ms.unwrap();
     assert!(ms.is_valid(), "after and older should be valid");
     // after() and older() don't mix because they use different fields
-    assert!(!ms.has_timelock_mix(), "after and older should not cause mixing");
+    assert!(
+        !ms.has_timelock_mix(),
+        "after and older should not cause mixing"
+    );
 }
 
 #[test]
 fn test_production_descriptor_timelocks() {
     // Test the timelock pattern from production descriptor
     // All three timelocks are timestamps (> 500000000)
-    let timelocks = [1748563200_u32, 1735171200, 1752451200];
+    let timelocks = [1_748_563_200_u32, 1_735_171_200, 1_752_451_200];
 
     for tl in timelocks {
         let ms_str = format!("after({tl})");
         let ms = Miniscript::from_str(&ms_str, Context::Wsh);
-        assert!(ms.is_ok(), "after({}) should parse", tl);
+        assert!(ms.is_ok(), "after({tl}) should parse");
 
         let ms = ms.unwrap();
-        assert!(ms.is_valid(), "after({}) should be valid", tl);
+        assert!(ms.is_valid(), "after({tl}) should be valid");
 
         // All are timestamps (> 500000000)
         assert!(tl > 500_000_000, "Should be timestamp");
@@ -190,7 +196,7 @@ fn test_after_in_thresh() {
     // after() as part of thresh
     let ms = Miniscript::from_str(
         "thresh(2,pk(A),s:pk(B),s:pk(C),snl:after(1735171200))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "thresh with after should parse");
 
@@ -201,10 +207,7 @@ fn test_after_in_thresh() {
 #[test]
 fn test_after_in_andor() {
     // after() in andor construct
-    let ms = Miniscript::from_str(
-        "andor(pk(A),and_v(v:pk(B),after(100)),pk(C))",
-        Context::Wsh
-    );
+    let ms = Miniscript::from_str("andor(pk(A),and_v(v:pk(B),after(100)),pk(C))", Context::Wsh);
     assert!(ms.is_ok(), "andor with after should parse");
 
     let ms = ms.unwrap();
@@ -216,7 +219,7 @@ fn test_complex_timelock_structure() {
     // Complex structure with multiple timelocks (from production)
     let ms = Miniscript::from_str(
         "or_i(and_v(v:pkh(A),after(1748563200)),thresh(2,pk(B),s:pk(C),s:pk(D),snl:after(1735171200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Complex timelock structure should parse");
 
@@ -294,7 +297,7 @@ fn test_timelock_in_different_branches() {
     // Timelocks in different branches of or_i
     let ms = Miniscript::from_str(
         "or_i(and_v(v:pk(A),after(1735171200)),and_v(v:pk(B),after(1748563200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Timelocks in branches should parse");
 
@@ -307,10 +310,7 @@ fn test_timelock_in_different_branches() {
 #[test]
 fn test_nested_timelocks() {
     // Nested timelock expressions
-    let ms = Miniscript::from_str(
-        "and_v(v:pk(A),and_v(v:pk(B),after(100)))",
-        Context::Wsh
-    );
+    let ms = Miniscript::from_str("and_v(v:pk(A),and_v(v:pk(B),after(100)))", Context::Wsh);
     assert!(ms.is_ok(), "Nested timelocks should parse");
 
     let ms = ms.unwrap();
@@ -320,10 +320,7 @@ fn test_nested_timelocks() {
 #[test]
 fn test_timelock_with_multi() {
     // Timelock combined with multi
-    let ms = Miniscript::from_str(
-        "and_v(v:multi(2,A,B,C),after(100))",
-        Context::Wsh
-    );
+    let ms = Miniscript::from_str("and_v(v:multi(2,A,B,C),after(100))", Context::Wsh);
     assert!(ms.is_ok(), "Timelock with multi should parse");
 
     let ms = ms.unwrap();
@@ -338,8 +335,12 @@ fn test_timelock_script_properties() {
 
     // Script with timelock should be larger
     if let (Some(size_no_lock), Some(size_with_lock)) =
-        (ms_no_lock.get_script_size(), ms_with_lock.get_script_size()) {
-        assert!(size_with_lock > size_no_lock, "Timelock should increase script size");
+        (ms_no_lock.get_script_size(), ms_with_lock.get_script_size())
+    {
+        assert!(
+            size_with_lock > size_no_lock,
+            "Timelock should increase script size"
+        );
     }
 }
 
@@ -348,7 +349,7 @@ fn test_production_full_timelock_pattern() {
     // Full pattern from production descriptor with all three timelocks
     let ms = Miniscript::from_str(
         "andor(multi(2,A,B,C),or_i(and_v(v:pkh(D),after(1748563200)),thresh(2,pk(E),s:pk(F),s:pk(G),snl:after(1735171200))),and_v(v:thresh(2,pkh(H),a:pkh(I),a:pkh(J)),after(1752451200)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Production timelock pattern should parse");
 
@@ -356,7 +357,10 @@ fn test_production_full_timelock_pattern() {
     assert!(ms.is_valid(), "Production timelock pattern should be valid");
     assert!(ms.is_sane(), "Production timelock pattern should be sane");
     // All three timelocks are timestamps (> 500000000), so no mixing
-    assert!(!ms.has_timelock_mix(), "All timestamps should not cause mixing");
+    assert!(
+        !ms.has_timelock_mix(),
+        "All timestamps should not cause mixing"
+    );
 }
 
 #[test]
@@ -373,14 +377,17 @@ fn test_timelock_boundary_values() {
     // Mixing block height and timestamp in after() - both are absolute timelocks
     let ms_mixed = Miniscript::from_str(
         "or_i(and_v(v:pk(A),after(499999999)),and_v(v:pk(B),after(500000000)))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms_mixed.is_ok(), "Mixed boundary values should parse");
     let ms_mixed = ms_mixed.unwrap();
     // Note: Bitcoin Core's has_timelock_mix() checks for mixing between
     // absolute (after) and relative (older) timelocks, not between
     // block height and timestamp within after(). Both are absolute timelocks.
-    assert!(!ms_mixed.has_timelock_mix(), "Same type (absolute) timelocks should not mix");
+    assert!(
+        !ms_mixed.has_timelock_mix(),
+        "Same type (absolute) timelocks should not mix"
+    );
 }
 
 #[test]
@@ -398,11 +405,17 @@ fn test_relative_timelock_types() {
 fn test_timelock_needs_signature() {
     // Timelocks alone don't need signatures
     let ms_lock_only = Miniscript::from_str("after(100)", Context::Wsh).unwrap();
-    assert!(!ms_lock_only.needs_signature(), "Timelock alone doesn't need signature");
+    assert!(
+        !ms_lock_only.needs_signature(),
+        "Timelock alone doesn't need signature"
+    );
 
     // But combined with pk, it does
     let ms_with_pk = Miniscript::from_str("and_v(v:pk(A),after(100))", Context::Wsh).unwrap();
-    assert!(ms_with_pk.needs_signature(), "Timelock with pk needs signature");
+    assert!(
+        ms_with_pk.needs_signature(),
+        "Timelock with pk needs signature"
+    );
 }
 
 #[test]
@@ -412,7 +425,10 @@ fn test_timelock_to_string() {
     let ms = Miniscript::from_str(original, Context::Wsh).unwrap();
 
     if let Some(s) = ms.to_string() {
-        assert!(s.contains("after") || s.contains("1735171200"), "Should contain timelock");
+        assert!(
+            s.contains("after") || s.contains("1735171200"),
+            "Should contain timelock"
+        );
     }
 }
 
@@ -423,6 +439,9 @@ fn test_wrapped_timelock_to_string() {
     let ms = Miniscript::from_str(original, Context::Wsh).unwrap();
 
     if let Some(s) = ms.to_string() {
-        assert!(s.contains("after") || s.contains("1735171200"), "Should contain timelock");
+        assert!(
+            s.contains("after") || s.contains("1735171200"),
+            "Should contain timelock"
+        );
     }
 }

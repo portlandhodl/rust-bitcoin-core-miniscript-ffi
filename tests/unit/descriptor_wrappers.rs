@@ -1,7 +1,7 @@
 //! Descriptor Type Wrappers Tests - Part 2 of 5
 //!
 //! Tests miniscript type wrappers (a:, s:, c:, d:, v:, j:, n:, l:, u:, t:)
-//! Based on Bitcoin Core's descriptor_tests.cpp
+//! Based on Bitcoin Core's `descriptor_tests.cpp`
 
 use miniscript_core_ffi::{Context, Miniscript};
 
@@ -289,7 +289,7 @@ fn test_complex_wrapper_combination() {
     // Complex combination from production descriptor
     let ms = Miniscript::from_str(
         "and_v(v:thresh(2,pkh(A),a:pkh(B),a:pkh(C)),pk(D))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "Complex wrapper combo should parse");
 
@@ -324,10 +324,15 @@ fn test_wrapper_script_size() {
     let ms_plain = Miniscript::from_str("pk(A)", Context::Wsh).unwrap();
     let ms_wrapped = Miniscript::from_str("v:pk(A)", Context::Wsh).unwrap();
 
-    if let (Some(size_plain), Some(size_wrapped)) = (ms_plain.get_script_size(), ms_wrapped.get_script_size()) {
+    if let (Some(size_plain), Some(size_wrapped)) =
+        (ms_plain.get_script_size(), ms_wrapped.get_script_size())
+    {
         // Wrapped version should have different (usually larger) script size
         // v: adds VERIFY opcode
-        assert!(size_wrapped >= size_plain, "Wrapper should affect script size");
+        assert!(
+            size_wrapped >= size_plain,
+            "Wrapper should affect script size"
+        );
     }
 }
 
@@ -382,7 +387,10 @@ fn test_c_wrapper_checksig() {
 
     if let Some(script) = ms.to_script() {
         // Should contain CHECKSIG opcode
-        assert!(!script.as_bytes().is_empty(), "c:pk_k should produce script");
+        assert!(
+            !script.as_bytes().is_empty(),
+            "c:pk_k should produce script"
+        );
     }
 }
 
@@ -390,10 +398,7 @@ fn test_c_wrapper_checksig() {
 fn test_wrapper_in_production_pattern() {
     // Test pattern from production descriptor:
     // v:thresh with a:pkh wrappers - thresh needs W type for 2nd+ args
-    let ms = Miniscript::from_str(
-        "and_v(v:pkh(A),pk(B))",
-        Context::Wsh
-    );
+    let ms = Miniscript::from_str("and_v(v:pkh(A),pk(B))", Context::Wsh);
     assert!(ms.is_ok(), "Production pattern should parse");
 
     let ms = ms.unwrap();
@@ -445,7 +450,7 @@ fn test_wrapper_preserves_validity() {
         let wrapped = format!("{wrapper}{base}");
         if let Ok(ms) = Miniscript::from_str(&wrapped, Context::Wsh) {
             // If it parses, it should be valid
-            assert!(ms.is_valid(), "{} should be valid", wrapped);
+            assert!(ms.is_valid(), "{wrapped} should be valid");
         }
     }
 }
@@ -458,6 +463,9 @@ fn test_wrapper_to_string() {
 
     if let Some(s) = ms.to_string() {
         // Should contain the wrapper
-        assert!(s.contains("v:") || s.contains("pk"), "Wrapper should be in string");
+        assert!(
+            s.contains("v:") || s.contains("pk"),
+            "Wrapper should be in string"
+        );
     }
 }

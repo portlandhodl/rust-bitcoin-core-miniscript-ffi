@@ -2,9 +2,9 @@
 //!
 //! This test investigates why a specific descriptor fails to decode in production.
 
-use bitcoin::address::Address;
-use bitcoin::hashes::{sha256, Hash};
 use bitcoin::Network;
+use bitcoin::address::Address;
+use bitcoin::hashes::{Hash, sha256};
 use miniscript_core_ffi::{Context, Miniscript};
 
 /// The problematic descriptor from production (with concrete indices /0/0)
@@ -33,7 +33,10 @@ fn test_full_descriptor_parsing() {
     // We need to extract the miniscript portion
 
     if let Some(miniscript_str) = extract_miniscript(PROBLEM_DESCRIPTOR) {
-        println!("\nExtracted miniscript (length: {} chars):", miniscript_str.len());
+        println!(
+            "\nExtracted miniscript (length: {} chars):",
+            miniscript_str.len()
+        );
         println!("{miniscript_str}");
 
         let result = Miniscript::from_str(miniscript_str, Context::Wsh);
@@ -77,7 +80,11 @@ fn test_miniscript_components() {
     println!("Testing multi() component:");
     println!("  Input: {}...", &multi_part[..80.min(multi_part.len())]);
     match Miniscript::from_str(multi_part, Context::Wsh) {
-        Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+        Ok(ms) => println!(
+            "  ✓ Parsed! Valid: {}, Type: {:?}",
+            ms.is_valid(),
+            ms.get_type()
+        ),
         Err(e) => println!("  ✗ Error: {e}"),
     }
 
@@ -85,7 +92,11 @@ fn test_miniscript_components() {
     let simple_multi = "multi(2,A,B,C)";
     println!("\nTesting simple multi(2,A,B,C):");
     match Miniscript::from_str(simple_multi, Context::Wsh) {
-        Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+        Ok(ms) => println!(
+            "  ✓ Parsed! Valid: {}, Type: {:?}",
+            ms.is_valid(),
+            ms.get_type()
+        ),
         Err(e) => println!("  ✗ Error: {e}"),
     }
 
@@ -93,7 +104,11 @@ fn test_miniscript_components() {
     let or_i_simple = "or_i(pk(A),pk(B))";
     println!("\nTesting or_i(pk(A),pk(B)):");
     match Miniscript::from_str(or_i_simple, Context::Wsh) {
-        Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+        Ok(ms) => println!(
+            "  ✓ Parsed! Valid: {}, Type: {:?}",
+            ms.is_valid(),
+            ms.get_type()
+        ),
         Err(e) => println!("  ✗ Error: {e}"),
     }
 
@@ -101,7 +116,11 @@ fn test_miniscript_components() {
     let and_v_pkh = "and_v(v:pkh(A),after(1748563200))";
     println!("\nTesting and_v(v:pkh(A),after(1748563200)):");
     match Miniscript::from_str(and_v_pkh, Context::Wsh) {
-        Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+        Ok(ms) => println!(
+            "  ✓ Parsed! Valid: {}, Type: {:?}",
+            ms.is_valid(),
+            ms.get_type()
+        ),
         Err(e) => println!("  ✗ Error: {e}"),
     }
 
@@ -109,7 +128,11 @@ fn test_miniscript_components() {
     let thresh_pk = "thresh(2,pk(A),s:pk(B),s:pk(C),snl:after(1735171200))";
     println!("\nTesting thresh(2,pk(A),s:pk(B),s:pk(C),snl:after(1735171200)):");
     match Miniscript::from_str(thresh_pk, Context::Wsh) {
-        Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+        Ok(ms) => println!(
+            "  ✓ Parsed! Valid: {}, Type: {:?}",
+            ms.is_valid(),
+            ms.get_type()
+        ),
         Err(e) => println!("  ✗ Error: {e}"),
     }
 
@@ -117,7 +140,11 @@ fn test_miniscript_components() {
     let v_thresh_pkh = "v:thresh(2,pkh(A),a:pkh(B),a:pkh(C))";
     println!("\nTesting v:thresh(2,pkh(A),a:pkh(B),a:pkh(C)):");
     match Miniscript::from_str(v_thresh_pkh, Context::Wsh) {
-        Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+        Ok(ms) => println!(
+            "  ✓ Parsed! Valid: {}, Type: {:?}",
+            ms.is_valid(),
+            ms.get_type()
+        ),
         Err(e) => println!("  ✗ Error: {e}"),
     }
 
@@ -125,7 +152,11 @@ fn test_miniscript_components() {
     let and_v_thresh = "and_v(v:thresh(2,pkh(A),a:pkh(B),a:pkh(C)),after(1752451200))";
     println!("\nTesting and_v(v:thresh(2,pkh(A),a:pkh(B),a:pkh(C)),after(1752451200)):");
     match Miniscript::from_str(and_v_thresh, Context::Wsh) {
-        Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+        Ok(ms) => println!(
+            "  ✓ Parsed! Valid: {}, Type: {:?}",
+            ms.is_valid(),
+            ms.get_type()
+        ),
         Err(e) => println!("  ✗ Error: {e}"),
     }
 
@@ -133,7 +164,11 @@ fn test_miniscript_components() {
     let or_i_full = "or_i(and_v(v:pkh(A),after(1748563200)),thresh(2,pk(B),s:pk(C),s:pk(D),snl:after(1735171200)))";
     println!("\nTesting or_i with and_v and thresh:");
     match Miniscript::from_str(or_i_full, Context::Wsh) {
-        Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+        Ok(ms) => println!(
+            "  ✓ Parsed! Valid: {}, Type: {:?}",
+            ms.is_valid(),
+            ms.get_type()
+        ),
         Err(e) => println!("  ✗ Error: {e}"),
     }
 
@@ -141,7 +176,11 @@ fn test_miniscript_components() {
     let andor_simple = "andor(multi(2,A,B,C),or_i(pk(D),pk(E)),pk(F))";
     println!("\nTesting andor(multi(2,A,B,C),or_i(pk(D),pk(E)),pk(F)):");
     match Miniscript::from_str(andor_simple, Context::Wsh) {
-        Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+        Ok(ms) => println!(
+            "  ✓ Parsed! Valid: {}, Type: {:?}",
+            ms.is_valid(),
+            ms.get_type()
+        ),
         Err(e) => println!("  ✗ Error: {e}"),
     }
 }
@@ -241,7 +280,11 @@ fn test_timelock_values() {
         println!("Testing {ms_str}:");
         match Miniscript::from_str(&ms_str, Context::Wsh) {
             Ok(ms) => {
-                println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type());
+                println!(
+                    "  ✓ Parsed! Valid: {}, Type: {:?}",
+                    ms.is_valid(),
+                    ms.get_type()
+                );
                 // Check if it's a valid timelock (> 500000000 means it's a timestamp)
                 if tl > 500_000_000 {
                     println!("  (This is a Unix timestamp)");
@@ -267,7 +310,11 @@ fn test_snl_wrapper() {
     println!("Testing {snl_test}:");
     match Miniscript::from_str(snl_test, Context::Wsh) {
         Ok(ms) => {
-            println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type());
+            println!(
+                "  ✓ Parsed! Valid: {}, Type: {:?}",
+                ms.is_valid(),
+                ms.get_type()
+            );
             if let Some(s) = ms.to_string() {
                 println!("  Canonical form: {s}");
             }
@@ -276,11 +323,21 @@ fn test_snl_wrapper() {
     }
 
     // Try individual wrappers
-    let wrappers = ["s:pk(A)", "n:after(100)", "l:after(100)", "nl:after(100)", "sn:pk(A)"];
+    let wrappers = [
+        "s:pk(A)",
+        "n:after(100)",
+        "l:after(100)",
+        "nl:after(100)",
+        "sn:pk(A)",
+    ];
     for w in wrappers {
         println!("\nTesting {w}:");
         match Miniscript::from_str(w, Context::Wsh) {
-            Ok(ms) => println!("  ✓ Parsed! Valid: {}, Type: {:?}", ms.is_valid(), ms.get_type()),
+            Ok(ms) => println!(
+                "  ✓ Parsed! Valid: {}, Type: {:?}",
+                ms.is_valid(),
+                ms.get_type()
+            ),
             Err(e) => println!("  ✗ Error: {e}"),
         }
     }
@@ -294,8 +351,8 @@ fn test_descriptor_analysis() {
     // The miniscript parses successfully with this library!
     // Let's analyze its properties in detail
     if let Some(miniscript_str) = extract_miniscript(PROBLEM_DESCRIPTOR) {
-        let ms = Miniscript::from_str(miniscript_str, Context::Wsh)
-            .expect("Miniscript should parse");
+        let ms =
+            Miniscript::from_str(miniscript_str, Context::Wsh).expect("Miniscript should parse");
 
         println!("Miniscript Properties:");
         println!("  Valid: {}", ms.is_valid());
@@ -357,8 +414,7 @@ fn test_descriptor_analysis() {
 #[test]
 fn test_production_descriptor_success() {
     // This test proves the miniscript is valid according to Bitcoin Core's implementation
-    let miniscript_str = extract_miniscript(PROBLEM_DESCRIPTOR)
-        .expect("Should extract miniscript");
+    let miniscript_str = extract_miniscript(PROBLEM_DESCRIPTOR).expect("Should extract miniscript");
 
     let ms = Miniscript::from_str(miniscript_str, Context::Wsh)
         .expect("Miniscript should parse successfully");
@@ -381,7 +437,9 @@ fn test_production_descriptor_success() {
     println!("  1. The production code may be using a different miniscript library");
     println!("  2. The production code may have additional validation rules");
     println!("  3. The production code may not support extended key formats (tpub with paths)");
-    println!("  4. The production code may have issues with the key origin format [fingerprint/path]");
+    println!(
+        "  4. The production code may have issues with the key origin format [fingerprint/path]"
+    );
     println!("  5. The production code may be parsing the full descriptor (wsh(...)) differently");
 }
 
@@ -391,7 +449,10 @@ fn test_wildcard_descriptor() {
     println!("\n=== Testing Wildcard Descriptor ===\n");
 
     if let Some(miniscript_str) = extract_miniscript(WILDCARD_DESCRIPTOR) {
-        println!("Wildcard miniscript (length: {} chars):", miniscript_str.len());
+        println!(
+            "Wildcard miniscript (length: {} chars):",
+            miniscript_str.len()
+        );
         println!("{}", &miniscript_str[..200.min(miniscript_str.len())]);
         println!("...");
 
@@ -474,14 +535,27 @@ fn test_simple_wildcard_keys() {
     // Test various wildcard formats
     let test_cases = [
         ("pk(A/*)", "Simple wildcard"),
-        ("pk(tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/*)", "tpub with wildcard"),
-        ("pk(tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/*)", "tpub with path and wildcard"),
-        ("pk([a0d3c79c/48'/1'/0'/2']tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/*)", "Full key with origin and wildcard"),
+        (
+            "pk(tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/*)",
+            "tpub with wildcard",
+        ),
+        (
+            "pk(tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/*)",
+            "tpub with path and wildcard",
+        ),
+        (
+            "pk([a0d3c79c/48'/1'/0'/2']tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/*)",
+            "Full key with origin and wildcard",
+        ),
         ("multi(2,A/*,B/*,C/*)", "Multi with wildcards"),
     ];
 
     for (ms_str, description) in test_cases {
-        println!("Testing {}: {}", description, &ms_str[..50.min(ms_str.len())]);
+        println!(
+            "Testing {}: {}",
+            description,
+            &ms_str[..50.min(ms_str.len())]
+        );
         match Miniscript::from_str(ms_str, Context::Wsh) {
             Ok(ms) => {
                 println!("  ✓ Parsed! Valid: {}", ms.is_valid());
@@ -532,7 +606,10 @@ fn test_derived_address_validation() {
                     // 1. Compute the SHA256 of the script
                     // 2. Create a P2WSH address from it
                     println!("  Script size: {} bytes", script.len());
-                    println!("  Script hash (first 8 bytes): {}", hex::encode(&script.as_bytes()[..8.min(script.len())]));
+                    println!(
+                        "  Script hash (first 8 bytes): {}",
+                        hex::encode(&script.as_bytes()[..8.min(script.len())])
+                    );
                 }
             }
             Err(e) => {
@@ -549,11 +626,9 @@ fn test_script_to_address_components() {
     println!("\n=== Computing Address Components ===\n");
 
     // Use a concrete derived miniscript (index 0)
-    let miniscript_str = extract_miniscript(PROBLEM_DESCRIPTOR)
-        .expect("Should extract miniscript");
+    let miniscript_str = extract_miniscript(PROBLEM_DESCRIPTOR).expect("Should extract miniscript");
 
-    let ms = Miniscript::from_str(miniscript_str, Context::Wsh)
-        .expect("Should parse");
+    let ms = Miniscript::from_str(miniscript_str, Context::Wsh).expect("Should parse");
 
     if let Some(script) = ms.to_script() {
         println!("Witness Script:");

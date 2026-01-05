@@ -223,14 +223,16 @@ use ffi::{
     miniscript_get_stack_size, miniscript_get_static_ops, miniscript_get_type,
     miniscript_has_timelock_mix, miniscript_is_non_malleable, miniscript_is_sane,
     miniscript_is_valid, miniscript_is_valid_top_level, miniscript_max_satisfaction_size,
-    miniscript_needs_signature, miniscript_node_free, miniscript_satisfy,
-    miniscript_satisfaction_result_free, miniscript_to_script, miniscript_to_string,
-    miniscript_valid_satisfactions, miniscript_version,
+    miniscript_needs_signature, miniscript_node_free, miniscript_satisfaction_result_free,
+    miniscript_satisfy, miniscript_to_script, miniscript_to_string, miniscript_valid_satisfactions,
+    miniscript_version,
 };
 
 // Descriptor module
 pub mod descriptor;
-pub use descriptor::{Descriptor, Network as DescriptorNetwork, get_descriptor_checksum, descriptor_version};
+pub use descriptor::{
+    Descriptor, Network as DescriptorNetwork, descriptor_version, get_descriptor_checksum,
+};
 
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
@@ -238,6 +240,7 @@ use std::fmt;
 use std::ptr;
 
 // Re-export bitcoin types for convenience
+pub use bitcoin::Witness;
 pub use bitcoin::hashes::hash160::Hash as Hash160;
 pub use bitcoin::hashes::ripemd160::Hash as Ripemd160;
 pub use bitcoin::hashes::sha256::Hash as Sha256;
@@ -247,14 +250,36 @@ pub use bitcoin::locktime::relative::LockTime as RelativeLockTime;
 pub use bitcoin::script::ScriptBuf;
 pub use bitcoin::secp256k1::ecdsa::Signature as EcdsaSignature;
 pub use bitcoin::taproot::Signature as SchnorrSignature;
-pub use bitcoin::Witness;
 
 /// Script context for miniscript parsing.
+///
+/// Miniscript expressions are context-dependent - the same expression may be
+/// valid in one context but not another due to different script size limits,
+/// opcode availability, and signature requirements.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use miniscript_core_ffi::{Miniscript, Context};
+///
+/// // Parse for SegWit v0 (P2WSH)
+/// let wsh = Miniscript::from_str("pk(A)", Context::Wsh);
+///
+/// // Parse for SegWit v1 (Tapscript)
+/// let tap = Miniscript::from_str("pk(A)", Context::Tapscript);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Context {
     /// P2WSH context (`SegWit` v0)
+    ///
+    /// Used for Pay-to-Witness-Script-Hash outputs. Has a 10,000 byte script
+    /// size limit and uses ECDSA signatures.
     Wsh,
     /// Tapscript context (`SegWit` v1)
+    ///
+    /// Used for Taproot script paths. Has a larger script size limit and
+    /// uses Schnorr signatures. Some opcodes like `OP_CHECKMULTISIG` are
+    /// disabled in favor of `OP_CHECKSIGADD`.
     Tapscript,
 }
 
@@ -268,13 +293,36 @@ impl From<Context> for MiniscriptContext {
 }
 
 /// Availability of a satisfaction.
+///
+/// Indicates whether a miniscript can be satisfied with the provided data.
+/// This is used both for actual satisfaction attempts and for size estimation.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use miniscript_core_ffi::Availability;
+///
+/// fn check_availability(avail: Availability) {
+///     match avail {
+///         Availability::Yes => println!("Can satisfy"),
+///         Availability::No => println!("Cannot satisfy"),
+///         Availability::Maybe => println!("Might be able to satisfy"),
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Availability {
-    /// Satisfaction is not available
+    /// Satisfaction is not available.
+    ///
+    /// The required data (signature, preimage, etc.) is not present.
     No,
-    /// Satisfaction is available
+    /// Satisfaction is available.
+    ///
+    /// All required data is present and the satisfaction can be produced.
     Yes,
-    /// Satisfaction may be available (for size estimation)
+    /// Satisfaction may be available (for size estimation).
+    ///
+    /// Used when estimating witness sizes without actually having the data.
     Maybe,
 }
 
@@ -299,8 +347,23 @@ impl From<Availability> for MiniscriptAvailability {
 }
 
 /// Error type for miniscript operations.
+///
+/// Contains a human-readable error message describing what went wrong.
+/// This error type is returned by parsing and satisfaction operations.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use miniscript_core_ffi::{Miniscript, Context};
+///
+/// let result = Miniscript::from_str("invalid_miniscript", Context::Wsh);
+/// if let Err(e) = result {
+///     println!("Parse error: {}", e);
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Error {
+    /// The error message describing what went wrong.
     message: String,
 }
 
@@ -315,31 +378,156 @@ impl std::error::Error for Error {}
 /// Trait for providing satisfaction data to miniscript.
 ///
 /// Implement this trait to provide signatures, hash preimages, and timelock
-/// information needed to satisfy a miniscript.
+/// information needed to satisfy a miniscript. The satisfier is called during
+/// the satisfaction process to provide the necessary data.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use miniscript_core_ffi::{Satisfier, Availability};
+///
+/// struct MySatisfier {
+///     // Your signing keys and preimages
+/// }
+///
+/// impl Satisfier for MySatisfier {
+///     fn sign(&self, key: &[u8]) -> (Availability, Option<Vec<u8>>) {
+///         // Return signature for the key if available
+///         (Availability::No, None)
+///     }
+///
+///     fn check_after(&self, value: u32) -> bool {
+///         // Check if absolute timelock is satisfied
+///         false
+///     }
+///
+///     fn check_older(&self, value: u32) -> bool {
+///         // Check if relative timelock is satisfied
+///         false
+///     }
+///
+///     fn sat_sha256(&self, hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+///         (Availability::No, None)
+///     }
+///
+///     fn sat_ripemd160(&self, hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+///         (Availability::No, None)
+///     }
+///
+///     fn sat_hash256(&self, hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+///         (Availability::No, None)
+///     }
+///
+///     fn sat_hash160(&self, hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+///         (Availability::No, None)
+///     }
+/// }
+/// ```
 pub trait Satisfier: Send {
     /// Sign with the given key, returning the signature bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key identifier bytes (as used in the miniscript)
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (availability, optional signature bytes). Return `Availability::Yes`
+    /// with the signature if signing succeeds, or `Availability::No` with `None` if
+    /// the key is not available.
     fn sign(&self, key: &[u8]) -> (Availability, Option<Vec<u8>>);
 
     /// Check if the absolute timelock is satisfied.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The timelock value (block height or Unix timestamp)
+    ///
+    /// # Returns
+    ///
+    /// `true` if the current time/height satisfies the timelock.
     fn check_after(&self, value: u32) -> bool;
 
     /// Check if the relative timelock is satisfied.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The relative timelock value (blocks or time units)
+    ///
+    /// # Returns
+    ///
+    /// `true` if the relative timelock is satisfied.
     fn check_older(&self, value: u32) -> bool;
 
     /// Get the preimage for a SHA256 hash.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The 32-byte SHA256 hash
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (availability, optional preimage bytes).
     fn sat_sha256(&self, hash: &[u8]) -> (Availability, Option<Vec<u8>>);
 
     /// Get the preimage for a RIPEMD160 hash.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The 20-byte RIPEMD160 hash
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (availability, optional preimage bytes).
     fn sat_ripemd160(&self, hash: &[u8]) -> (Availability, Option<Vec<u8>>);
 
     /// Get the preimage for a HASH256 (double SHA256) hash.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The 32-byte HASH256 hash
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (availability, optional preimage bytes).
     fn sat_hash256(&self, hash: &[u8]) -> (Availability, Option<Vec<u8>>);
 
     /// Get the preimage for a HASH160 hash.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The 20-byte HASH160 hash (RIPEMD160 of SHA256)
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (availability, optional preimage bytes).
     fn sat_hash160(&self, hash: &[u8]) -> (Availability, Option<Vec<u8>>);
 }
 
 /// A simple satisfier that uses pre-populated data.
+///
+/// This is a convenience implementation of [`Satisfier`] that stores signatures,
+/// hash preimages, and timelock information in hash maps and sets. Populate the
+/// fields before passing to [`Miniscript::satisfy()`].
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use miniscript_core_ffi::SimpleSatisfier;
+///
+/// let mut satisfier = SimpleSatisfier::new();
+///
+/// // Add a signature for key "A"
+/// satisfier.signatures.insert(b"A".to_vec(), vec![0x30, 0x44, /* ... */]);
+///
+/// // Mark absolute timelock 500000 as satisfied
+/// satisfier.after_satisfied.insert(500000);
+///
+/// // Add a SHA256 preimage
+/// let hash = vec![/* 32-byte hash */];
+/// let preimage = vec![/* preimage bytes */];
+/// satisfier.sha256_preimages.insert(hash, preimage);
+/// ```
 pub struct SimpleSatisfier {
     /// Map from key bytes to signature bytes
     pub signatures: HashMap<Vec<u8>, Vec<u8>>,
@@ -430,10 +618,38 @@ impl Satisfier for SimpleSatisfier {
 }
 
 /// Result of a satisfaction attempt.
+///
+/// Contains the availability status and the witness stack that can be used
+/// to satisfy the miniscript in a transaction.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use miniscript_core_ffi::{Miniscript, Context, SimpleSatisfier, Availability};
+///
+/// let ms = Miniscript::from_str("pk(A)", Context::Wsh).unwrap();
+/// let satisfier = SimpleSatisfier::new();
+///
+/// let result = ms.satisfy(satisfier, true).unwrap();
+/// match result.availability {
+///     Availability::Yes => {
+///         let witness = result.to_witness();
+///         println!("Got witness with {} elements", witness.len());
+///     }
+///     _ => println!("Could not satisfy"),
+/// }
+/// ```
 pub struct SatisfyResult {
-    /// Whether the satisfaction was successful
+    /// Whether the satisfaction was successful.
+    ///
+    /// - `Availability::Yes` - Satisfaction succeeded, `stack` contains valid witness data
+    /// - `Availability::No` - Satisfaction failed, required data not available
+    /// - `Availability::Maybe` - Partial satisfaction (for size estimation)
     pub availability: Availability,
-    /// The witness stack (if successful)
+    /// The witness stack (if successful).
+    ///
+    /// Each element is a byte vector representing one witness stack item.
+    /// Use [`to_witness()`](Self::to_witness) to convert to a [`bitcoin::Witness`].
     pub stack: Vec<Vec<u8>>,
 }
 
@@ -801,9 +1017,39 @@ extern "C" fn sat_hash160_callback(
 
 /// A parsed miniscript node.
 ///
-/// This is a safe wrapper around the C++ miniscript implementation.
+/// This is a safe wrapper around Bitcoin Core's C++ miniscript implementation.
+/// It provides methods for parsing, validating, analyzing, and satisfying
+/// miniscript expressions.
+///
+/// # Thread Safety
+///
+/// `Miniscript` implements `Send` and `Sync`, making it safe to share across
+/// threads. The underlying C++ object is immutable after creation.
+///
+/// # Memory Management
+///
+/// The struct owns the underlying C++ object and will free it when dropped.
+/// Do not attempt to use the raw pointer after the `Miniscript` is dropped.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use miniscript_core_ffi::{Miniscript, Context};
+///
+/// // Parse a miniscript
+/// let ms = Miniscript::from_str("and_v(v:pk(A),pk(B))", Context::Wsh)
+///     .expect("valid miniscript");
+///
+/// // Check properties
+/// assert!(ms.is_valid());
+/// assert!(ms.is_sane());
+/// println!("Type: {}", ms.get_type().unwrap());
+/// println!("Max witness size: {:?}", ms.max_satisfaction_size());
+/// ```
 pub struct Miniscript {
+    /// Raw pointer to the C++ `MiniscriptNode` object.
     ptr: *mut MiniscriptNode,
+    /// The context this miniscript was parsed with.
     context: Context,
 }
 
@@ -833,8 +1079,9 @@ impl Miniscript {
         let mut node_ptr: *mut MiniscriptNode = ptr::null_mut();
 
         // SAFETY: We're passing valid pointers and the C code handles null checks.
-        let result =
-            unsafe { ffi::miniscript_from_string(c_input.as_ptr(), context.into(), &raw mut node_ptr) };
+        let result = unsafe {
+            ffi::miniscript_from_string(c_input.as_ptr(), context.into(), &raw mut node_ptr)
+        };
 
         if result.success {
             Ok(Self {
@@ -1214,6 +1461,16 @@ impl fmt::Debug for Miniscript {
 }
 
 /// Get the library version string.
+///
+/// Returns the version of the underlying Bitcoin Core miniscript FFI wrapper.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use miniscript_core_ffi::version;
+///
+/// println!("Library version: {}", version());
+/// ```
 #[must_use]
 pub fn version() -> &'static str {
     // SAFETY: miniscript_version returns a static string

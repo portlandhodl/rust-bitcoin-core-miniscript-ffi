@@ -1,6 +1,6 @@
 //! Descriptor Validation Tests
 //!
-//! Tests based on Bitcoin Core's miniscript_tests.cpp test vectors
+//! Tests based on Bitcoin Core's `miniscript_tests.cpp` test vectors
 //! These use exact miniscript syntax from Bitcoin Core
 
 use miniscript_core_ffi::{Context, Miniscript};
@@ -104,7 +104,10 @@ fn test_or_c_wrong_type_x() {
     let ms = Miniscript::from_str("t:or_c(a:0,v:1)", Context::Wsh);
     // Should fail to parse or be invalid
     if let Ok(ms) = ms {
-        assert!(!ms.is_valid(), "t:or_c(a:0,v:1) should be invalid - X must be B");
+        assert!(
+            !ms.is_valid(),
+            "t:or_c(a:0,v:1) should be invalid - X must be B"
+        );
     }
 }
 
@@ -114,7 +117,10 @@ fn test_or_c_x_must_be_d() {
     let ms = Miniscript::from_str("t:or_c(1,v:1)", Context::Wsh);
     // Should fail to parse or be invalid
     if let Ok(ms) = ms {
-        assert!(!ms.is_valid(), "t:or_c(1,v:1) should be invalid - X must be d");
+        assert!(
+            !ms.is_valid(),
+            "t:or_c(1,v:1) should be invalid - X must be d"
+        );
     }
 }
 
@@ -124,7 +130,10 @@ fn test_or_c_y_must_be_v() {
     let ms = Miniscript::from_str("t:or_c(0,1)", Context::Wsh);
     // Should fail to parse or be invalid
     if let Ok(ms) = ms {
-        assert!(!ms.is_valid(), "t:or_c(0,1) should be invalid - Y must be V");
+        assert!(
+            !ms.is_valid(),
+            "t:or_c(0,1) should be invalid - Y must be V"
+        );
     }
 }
 
@@ -138,7 +147,10 @@ fn test_andor_valid() {
     let ms = Miniscript::from_str("andor(n:or_i(0,after(1)),1,1)", Context::Wsh);
     assert!(ms.is_ok(), "andor(n:or_i(0,after(1)),1,1) should parse");
     let ms = ms.unwrap();
-    assert!(ms.is_valid(), "andor(n:or_i(0,after(1)),1,1) should be valid");
+    assert!(
+        ms.is_valid(),
+        "andor(n:or_i(0,after(1)),1,1) should be valid"
+    );
 }
 
 #[test]
@@ -147,7 +159,10 @@ fn test_andor_x_must_be_u() {
     let ms = Miniscript::from_str("andor(or_i(0,after(1)),1,1)", Context::Wsh);
     // Should fail to parse or be invalid
     if let Ok(ms) = ms {
-        assert!(!ms.is_valid(), "andor(or_i(0,after(1)),1,1) should be invalid - X must be u");
+        assert!(
+            !ms.is_valid(),
+            "andor(or_i(0,after(1)),1,1) should be invalid - X must be u"
+        );
     }
 }
 
@@ -170,7 +185,10 @@ fn test_or_d_x_must_be_u() {
     let ms = Miniscript::from_str("or_d(or_i(0,after(1)),1)", Context::Wsh);
     // Should fail to parse or be invalid
     if let Ok(ms) = ms {
-        assert!(!ms.is_valid(), "or_d(or_i(0,after(1)),1) should be invalid - X must be u");
+        assert!(
+            !ms.is_valid(),
+            "or_d(or_i(0,after(1)),1) should be invalid - X must be u"
+        );
     }
 }
 
@@ -182,19 +200,34 @@ fn test_or_d_x_must_be_u() {
 fn test_or_b_timelock_heightlock_valid() {
     // or_b(l:after(100),al:after(1000000000)): valid (from Bitcoin Core)
     let ms = Miniscript::from_str("or_b(l:after(100),al:after(1000000000))", Context::Wsh);
-    assert!(ms.is_ok(), "or_b(l:after(100),al:after(1000000000)) should parse");
+    assert!(
+        ms.is_ok(),
+        "or_b(l:after(100),al:after(1000000000)) should parse"
+    );
     let ms = ms.unwrap();
-    assert!(ms.is_valid(), "or_b(l:after(100),al:after(1000000000)) should be valid");
+    assert!(
+        ms.is_valid(),
+        "or_b(l:after(100),al:after(1000000000)) should be valid"
+    );
 }
 
 #[test]
 fn test_and_b_timelock_mix() {
     // and_b(after(100),a:after(1000000000)): valid but has timelock mix (from Bitcoin Core)
     let ms = Miniscript::from_str("and_b(after(100),a:after(1000000000))", Context::Wsh);
-    assert!(ms.is_ok(), "and_b(after(100),a:after(1000000000)) should parse");
+    assert!(
+        ms.is_ok(),
+        "and_b(after(100),a:after(1000000000)) should parse"
+    );
     let ms = ms.unwrap();
-    assert!(ms.is_valid(), "and_b(after(100),a:after(1000000000)) should be valid");
-    assert!(ms.has_timelock_mix(), "and_b(after(100),a:after(1000000000)) should have timelock mix");
+    assert!(
+        ms.is_valid(),
+        "and_b(after(100),a:after(1000000000)) should be valid"
+    );
+    assert!(
+        ms.has_timelock_mix(),
+        "and_b(after(100),a:after(1000000000)) should have timelock mix"
+    );
 }
 
 // ============================================================================
@@ -214,9 +247,15 @@ fn test_lltvln_after() {
 fn test_j_and_v_older() {
     // j:and_v(vdv:after(1567547623),older(2016)) (from Bitcoin Core)
     let ms = Miniscript::from_str("j:and_v(vdv:after(1567547623),older(2016))", Context::Wsh);
-    assert!(ms.is_ok(), "j:and_v(vdv:after(1567547623),older(2016)) should parse");
+    assert!(
+        ms.is_ok(),
+        "j:and_v(vdv:after(1567547623),older(2016)) should parse"
+    );
     let ms = ms.unwrap();
-    assert!(ms.is_valid(), "j:and_v(vdv:after(1567547623),older(2016)) should be valid");
+    assert!(
+        ms.is_valid(),
+        "j:and_v(vdv:after(1567547623),older(2016)) should be valid"
+    );
 }
 
 // ============================================================================
@@ -229,7 +268,7 @@ fn test_thresh_with_pk_k() {
     // Using placeholder key
     let ms = Miniscript::from_str(
         "thresh(1,c:pk_k(A),altv:after(1000000000),altv:after(100))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "thresh with c:pk_k should parse");
     let ms = ms.unwrap();
@@ -241,11 +280,14 @@ fn test_thresh_2_with_ac_pk_k() {
     // thresh(2,c:pk_k(...),ac:pk_k(...),altv:after(1000000000),altv:after(100)) (from Bitcoin Core)
     let ms = Miniscript::from_str(
         "thresh(2,c:pk_k(A),ac:pk_k(B),altv:after(1000000000),altv:after(100))",
-        Context::Wsh
+        Context::Wsh,
     );
     assert!(ms.is_ok(), "thresh(2) with c:pk_k and ac:pk_k should parse");
     let ms = ms.unwrap();
-    assert!(ms.is_valid(), "thresh(2) with c:pk_k and ac:pk_k should be valid");
+    assert!(
+        ms.is_valid(),
+        "thresh(2) with c:pk_k and ac:pk_k should be valid"
+    );
     // This has timelock mix (height vs time)
     assert!(ms.has_timelock_mix(), "thresh(2) should have timelock mix");
 }
@@ -362,7 +404,10 @@ fn test_check_stack_size() {
 #[test]
 fn test_is_valid_top_level() {
     let ms = Miniscript::from_str("pk(A)", Context::Wsh).unwrap();
-    assert!(ms.is_valid_top_level(), "pk(A) should be valid at top level");
+    assert!(
+        ms.is_valid_top_level(),
+        "pk(A) should be valid at top level"
+    );
 }
 
 // ============================================================================

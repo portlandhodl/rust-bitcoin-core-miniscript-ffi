@@ -7,8 +7,7 @@ use miniscript_core_ffi::descriptor::{Descriptor, Network};
 
 /// Helper to check if descriptor parsing succeeds
 fn check_parse_success(desc_str: &str) -> Descriptor {
-    Descriptor::parse(desc_str)
-        .unwrap_or_else(|e| panic!("Failed to parse '{desc_str}': {e}"))
+    Descriptor::parse(desc_str).unwrap_or_else(|e| panic!("Failed to parse '{desc_str}': {e}"))
 }
 
 /// Helper to check if descriptor parsing fails with expected error
@@ -64,7 +63,7 @@ fn test_pk_compressed() {
         "pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
         false, // not ranged
         true,  // solvable
-        "2103a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bdac"
+        "2103a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bdac",
     );
 }
 
@@ -75,7 +74,7 @@ fn test_pk_uncompressed() {
         "pk(04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235)",
         false,
         true,
-        "4104a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235ac"
+        "4104a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235ac",
     );
 }
 
@@ -86,7 +85,7 @@ fn test_pkh_compressed() {
         "pkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
         false,
         true,
-        "76a9149a1c78a507689f6f54b847ad1cef1e614ee23f1e88ac"
+        "76a9149a1c78a507689f6f54b847ad1cef1e614ee23f1e88ac",
     );
 }
 
@@ -97,7 +96,7 @@ fn test_pkh_uncompressed() {
         "pkh(04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235)",
         false,
         true,
-        "76a914b5bd079c4d57cc7fc28ecf8213a6b791625b818388ac"
+        "76a914b5bd079c4d57cc7fc28ecf8213a6b791625b818388ac",
     );
 }
 
@@ -108,7 +107,7 @@ fn test_wpkh_compressed() {
         "wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
         false,
         true,
-        "00149a1c78a507689f6f54b847ad1cef1e614ee23f1e"
+        "00149a1c78a507689f6f54b847ad1cef1e614ee23f1e",
     );
 }
 
@@ -117,7 +116,7 @@ fn test_wpkh_uncompressed_fails() {
     // wpkh() does not allow uncompressed keys
     check_parse_failure(
         "wpkh(04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235)",
-        "Uncompressed keys are not allowed"
+        "Uncompressed keys are not allowed",
     );
 }
 
@@ -128,7 +127,7 @@ fn test_sh_wpkh() {
         "sh(wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))",
         false,
         true,
-        "a91484ab21b1b2fd065d4504ff693d832434b6108d7b87"
+        "a91484ab21b1b2fd065d4504ff693d832434b6108d7b87",
     );
 }
 
@@ -137,7 +136,7 @@ fn test_sh_wpkh_uncompressed_fails() {
     // sh(wpkh()) does not allow uncompressed keys
     check_parse_failure(
         "sh(wpkh(04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235))",
-        "Uncompressed keys are not allowed"
+        "Uncompressed keys are not allowed",
     );
 }
 
@@ -148,7 +147,7 @@ fn test_wsh_pk() {
         "wsh(pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))",
         false,
         true,
-        "00202e271faa2325c199d25d22e1ead982e45b64eeb4f31e73dbdf41bd4b5fec23fa"
+        "00202e271faa2325c199d25d22e1ead982e45b64eeb4f31e73dbdf41bd4b5fec23fa",
     );
 }
 
@@ -157,7 +156,7 @@ fn test_wsh_pk_uncompressed_fails() {
     // wsh(pk()) does not allow uncompressed keys
     check_parse_failure(
         "wsh(pk(04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235))",
-        "Uncompressed keys are not allowed"
+        "Uncompressed keys are not allowed",
     );
 }
 
@@ -168,7 +167,7 @@ fn test_wsh_pkh() {
         "wsh(pkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))",
         false,
         true,
-        "0020338e023079b91c58571b20e602d7805fb808c22473cbc391a41b1bd3a192e75b"
+        "0020338e023079b91c58571b20e602d7805fb808c22473cbc391a41b1bd3a192e75b",
     );
 }
 
@@ -179,7 +178,7 @@ fn test_sh_pk() {
         "sh(pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))",
         false,
         true,
-        "a9141857af51a5e516552b3086430fd8ce55f7c1a52487"
+        "a9141857af51a5e516552b3086430fd8ce55f7c1a52487",
     );
 }
 
@@ -190,7 +189,7 @@ fn test_sh_pkh() {
         "sh(pkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))",
         false,
         true,
-        "a9141a31ad23bf49c247dd531a623c2ef57da3c400c587"
+        "a9141a31ad23bf49c247dd531a623c2ef57da3c400c587",
     );
 }
 
@@ -201,7 +200,7 @@ fn test_sh_wsh_pk() {
         "sh(wsh(pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)))",
         false,
         true,
-        "a91472d0c5a3bfad8c3e7bd5303a72b94240e80b6f1787"
+        "a91472d0c5a3bfad8c3e7bd5303a72b94240e80b6f1787",
     );
 }
 
@@ -212,7 +211,7 @@ fn test_sh_wsh_pkh() {
         "sh(wsh(pkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)))",
         false,
         true,
-        "a914b61b92e2ca21bac1e72a3ab859a742982bea960a87"
+        "a914b61b92e2ca21bac1e72a3ab859a742982bea960a87",
     );
 }
 
@@ -223,7 +222,7 @@ fn test_tr_basic() {
         "tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
         false,
         true,
-        "512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11"
+        "512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11",
     );
 }
 
@@ -234,7 +233,7 @@ fn test_rawtr_basic() {
         "rawtr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
         false,
         true,
-        "5120a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd"
+        "5120a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd",
     );
 }
 
@@ -243,12 +242,12 @@ fn test_hybrid_key_not_allowed() {
     // Hybrid public keys (starting with 06 or 07) are not allowed
     check_parse_failure(
         "pk(07a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235)",
-        "Hybrid public keys are not allowed"
+        "Hybrid public keys are not allowed",
     );
 
     check_parse_failure(
         "pkh(07a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235)",
-        "Hybrid public keys are not allowed"
+        "Hybrid public keys are not allowed",
     );
 }
 
@@ -257,7 +256,7 @@ fn test_invalid_pubkey() {
     // Invalid pubkey (too short)
     check_parse_failure(
         "wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5)",
-        "invalid"
+        "invalid",
     );
 }
 
@@ -266,37 +265,37 @@ fn test_nesting_restrictions() {
     // sh() needs a script, not a bare key
     check_parse_failure(
         "sh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
-        "function is needed within P2SH"
+        "function is needed within P2SH",
     );
 
     // wsh() needs a script, not a bare key
     check_parse_failure(
         "wsh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
-        "function is needed within P2WSH"
+        "function is needed within P2WSH",
     );
 
     // Cannot embed wpkh inside wsh
     check_parse_failure(
         "wsh(wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))",
-        "wpkh() at top level or inside sh()"
+        "wpkh() at top level or inside sh()",
     );
 
     // Cannot embed sh inside wsh
     check_parse_failure(
         "wsh(sh(pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)))",
-        "sh() at top level"
+        "sh() at top level",
     );
 
     // Cannot embed sh inside sh
     check_parse_failure(
         "sh(sh(pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)))",
-        "sh() at top level"
+        "sh() at top level",
     );
 
     // Cannot embed wsh inside wsh
     check_parse_failure(
         "wsh(wsh(pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)))",
-        "wsh() at top level or inside sh()"
+        "wsh() at top level or inside sh()",
     );
 }
 
@@ -318,12 +317,17 @@ fn test_descriptor_to_string() {
 
 #[test]
 fn test_get_address_wpkh() {
-    let desc = check_parse_success("wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)");
+    let desc = check_parse_success(
+        "wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
+    );
 
     // Get mainnet address (library uses mainnet params)
     if let Some(addr) = desc.get_address(0, Network::Mainnet) {
         // Should be a valid bech32 mainnet address
-        assert!(addr.starts_with("bc1"), "Expected mainnet address, got: {addr}");
+        assert!(
+            addr.starts_with("bc1"),
+            "Expected mainnet address, got: {addr}"
+        );
     } else {
         panic!("Failed to get address");
     }
@@ -331,12 +335,16 @@ fn test_get_address_wpkh() {
 
 #[test]
 fn test_get_address_tr() {
-    let desc = check_parse_success("tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)");
+    let desc =
+        check_parse_success("tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)");
 
     // Get mainnet address (library uses mainnet params)
     if let Some(addr) = desc.get_address(0, Network::Mainnet) {
         // Should be a valid bech32m mainnet address
-        assert!(addr.starts_with("bc1"), "Expected mainnet address, got: {addr}");
+        assert!(
+            addr.starts_with("bc1"),
+            "Expected mainnet address, got: {addr}"
+        );
     } else {
         panic!("Failed to get address");
     }
@@ -344,7 +352,9 @@ fn test_get_address_tr() {
 
 #[test]
 fn test_script_size() {
-    let desc = check_parse_success("wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)");
+    let desc = check_parse_success(
+        "wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
+    );
 
     if let Some(size) = desc.script_size() {
         // wpkh script is 22 bytes (0x0014 + 20-byte hash)
@@ -356,7 +366,9 @@ fn test_script_size() {
 
 #[test]
 fn test_max_satisfaction_weight() {
-    let desc = check_parse_success("wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)");
+    let desc = check_parse_success(
+        "wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
+    );
 
     // Should be able to get max satisfaction weight
     if let Some(weight) = desc.max_satisfaction_weight(true) {
@@ -368,13 +380,17 @@ fn test_max_satisfaction_weight() {
 
 #[test]
 fn test_get_pubkeys() {
-    let desc = check_parse_success("wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)");
+    let desc = check_parse_success(
+        "wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
+    );
 
     if let Some(pubkeys) = desc.get_pubkeys(0) {
         assert_eq!(pubkeys.len(), 1, "Expected 1 pubkey");
         assert_eq!(pubkeys[0].len(), 33, "Expected 33-byte compressed pubkey");
 
-        let expected_pubkey = hex::decode("03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd").unwrap();
+        let expected_pubkey =
+            hex::decode("03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd")
+                .unwrap();
         assert_eq!(pubkeys[0], expected_pubkey, "Pubkey mismatch");
     } else {
         panic!("Failed to get pubkeys");
@@ -388,7 +404,7 @@ fn test_pkh_with_key_origin() {
         "pkh([deadbeef/1/2'/3/4']03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
         false,
         true,
-        "76a9149a1c78a507689f6f54b847ad1cef1e614ee23f1e88ac"
+        "76a9149a1c78a507689f6f54b847ad1cef1e614ee23f1e88ac",
     );
 }
 
@@ -397,7 +413,7 @@ fn test_key_origin_missing_bracket() {
     // Missing opening bracket in key origin
     check_parse_failure(
         "pkh(deadbeef/1/2'/3/4']03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
-        "Key origin start"
+        "Key origin start",
     );
 }
 
@@ -406,7 +422,7 @@ fn test_key_origin_multiple_closing_brackets() {
     // Multiple closing brackets in key origin
     check_parse_failure(
         "pkh([deadbeef]/1/2'/3/4']03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
-        "Multiple ']'"
+        "Multiple ']'",
     );
 }
 
@@ -415,11 +431,11 @@ fn test_whitespace_in_keys() {
     // Whitespace in keys should be rejected
     check_parse_failure(
         "pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd )",
-        "whitespace"
+        "whitespace",
     );
 
     check_parse_failure(
         "pk( 03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
-        "whitespace"
+        "whitespace",
     );
 }
