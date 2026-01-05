@@ -111,9 +111,6 @@ set(BITCOIN_CORE_SOURCES
     ${BITCOIN_SRC_DIR}/util/strencodings.cpp
     ${BITCOIN_SRC_DIR}/util/string.cpp
     ${BITCOIN_SRC_DIR}/util/spanparsing.cpp
-
-    # Threading (required for args.h LOCK macro)
-    ${BITCOIN_SRC_DIR}/sync.cpp
 )
 
 set(BITCOIN_SOURCES_FILTERED)
