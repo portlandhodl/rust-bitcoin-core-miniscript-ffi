@@ -64,6 +64,15 @@ add_compile_definitions(
     SECP256K1_STATIC=1
 )
 
+# Windows-specific definitions
+if(WIN32 OR MSVC)
+  add_compile_definitions(WIN32)
+  # Enable exception handling for MSVC
+  if(MSVC)
+    add_compile_options(/EHsc)
+  endif()
+endif()
+
 string(REPLACE "-DNDEBUG" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 string(REPLACE "-DNDEBUG" "" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
