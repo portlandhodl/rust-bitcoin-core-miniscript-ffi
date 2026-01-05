@@ -190,25 +190,66 @@ static MainnetChainParams g_mainnet_params;
 static TestnetChainParams g_testnet_params;
 static RegtestChainParams g_regtest_params;
 
-// Current active chain params (default to testnet for tpub parsing)
-static const CChainParams* g_current_params = &g_testnet_params;
+// =============================================================================
+// Thread Safety for Chain Parameters
+// =============================================================================
+//
+// The global chain parameters (g_current_params) are accessed during descriptor
+// parsing to determine which key prefixes are valid (xpub vs tpub). When tests
+// run in parallel with different network contexts, a race condition can occur:
+//
+//   Thread A: SelectParams(TESTNET)  -> g_current_params = testnet
+//   Thread B: SelectParams(MAINNET)  -> g_current_params = mainnet
+//   Thread A: Parse("wpkh(tpub...)")  -> FAILS because mainnet expects xpub
+//
+// To prevent this, we use a mutex that must be held for the entire duration
+// of the parse operation (SelectParams + Parse), not just during SelectParams.
+// The mutex is acquired in descriptor_parse_with_network() in descriptor_wrapper.cpp.
+//
+// =============================================================================
 
-// Params() returns the currently selected chain parameters
-// This is the global function that Bitcoin Core's key_io.cpp uses
+#include <mutex>
+
+// Mutex protecting g_current_params during concurrent descriptor parsing
+static std::mutex g_params_mutex;
+
+// Current active chain params (default to mainnet for safety)
+static const CChainParams* g_current_params = &g_mainnet_params;
+
+// Returns a reference to the params mutex for external locking.
+// Used by descriptor_parse_with_network() to hold the lock during parsing.
+std::mutex& GetParamsMutex() {
+    return g_params_mutex;
+}
+
+// Returns the currently selected chain parameters.
+// This is the global function that Bitcoin Core's key_io.cpp uses.
+//
+// THREAD SAFETY: Caller must hold g_params_mutex when calling this function
+// in a multi-threaded context. The lock should be held for the entire
+// operation that depends on the chain parameters (e.g., descriptor parsing).
 const CChainParams& Params() {
     return *g_current_params;
 }
 
-// SelectParams allows switching between networks
-// This mirrors Bitcoin Core's SelectParams() function
-// Reference: vendor/bitcoin/src/chainparams.cpp
+// Selects the active chain parameters for the specified network.
+// This mirrors Bitcoin Core's SelectParams() function.
+//
+// THREAD SAFETY: Caller must hold g_params_mutex when calling this function.
+// The lock should be held until the operation using these params completes.
+//
+// @param network Network identifier:
+//   - 0: Mainnet (xpub/xprv keys, bc1 addresses)
+//   - 1: Testnet (tpub/tprv keys, tb1 addresses)
+//   - 2: Signet  (tpub/tprv keys, tb1 addresses)
+//   - 3: Regtest (tpub/tprv keys, bcrt1 addresses)
 void SelectParams(int network) {
     switch (network) {
         case 0: // Mainnet
             g_current_params = &g_mainnet_params;
             break;
         case 1: // Testnet
-        case 2: // Signet (uses same prefixes as testnet)
+        case 2: // Signet (uses same key prefixes as testnet)
             g_current_params = &g_testnet_params;
             break;
         case 3: // Regtest

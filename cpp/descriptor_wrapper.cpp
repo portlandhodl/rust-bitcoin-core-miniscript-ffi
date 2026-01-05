@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <mutex>
 
 // Bitcoin Core includes
 #include <script/descriptor.h>
@@ -41,15 +42,27 @@ static char* strdup_safe(const std::string& str) {
     return strdup_safe(str.c_str());
 }
 
-// Forward declaration for SelectParams
+// Forward declarations from stubs.cpp for thread-safe chain parameter selection
 void SelectParams(int network);
+std::mutex& GetParamsMutex();
 
 extern "C" {
 
+/**
+ * Parse a descriptor string with the specified network context.
+ *
+ * This function is thread-safe: it acquires a mutex to ensure that the global
+ * chain parameters remain consistent throughout the entire parse operation.
+ * This prevents race conditions when multiple threads parse descriptors with
+ * different network contexts (e.g., one parsing xpub on mainnet while another
+ * parses tpub on testnet).
+ *
+ * @param descriptor_str The descriptor string to parse (e.g., "wpkh(tpub...)")
+ * @param network The network context for key validation and address encoding
+ * @param out_node Output pointer for the parsed descriptor node
+ * @return Result indicating success or failure with error message
+ */
 DescriptorResult descriptor_parse_with_network(const char* descriptor_str, DescriptorNetwork network, DescriptorNode** out_node) {
-    // Select the appropriate chain params before parsing
-    SelectParams(static_cast<int>(network));
-
     DescriptorResult result = {false, nullptr};
 
     if (!descriptor_str || !out_node) {
@@ -60,10 +73,19 @@ DescriptorResult descriptor_parse_with_network(const char* descriptor_str, Descr
     *out_node = nullptr;
 
     try {
+        // Acquire the params mutex for the entire parse operation.
+        // This ensures atomicity: SelectParams + Parse must complete together
+        // without another thread changing the global chain parameters.
+        std::lock_guard<std::mutex> lock(GetParamsMutex());
+
+        // Set the chain parameters for this network
+        SelectParams(static_cast<int>(network));
+
         FlatSigningProvider provider;
         std::string error;
         std::string desc_str(descriptor_str);
 
+        // Parse the descriptor using Bitcoin Core's parser
         auto descriptors = Parse(desc_str, provider, error, false);
 
         if (descriptors.empty()) {

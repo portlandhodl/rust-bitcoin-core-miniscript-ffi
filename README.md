@@ -13,7 +13,7 @@ This crate provides direct access to Bitcoin Core's C++ miniscript parser, analy
 
 - **Reference Implementation**: Bitcoin Core's miniscript is the canonical implementation used by the Bitcoin network
 - **Cross-Verification**: Validate that your miniscript implementation matches Bitcoin Core's behavior exactly
-- **Production Tested**: Built on code that secures billions of dollars in Bitcoin
+- **Production Tested**: Built on Bitcoin Core used in multiple production Bitcoin services
 - **Full Feature Parity**: Supports both P2WSH (SegWit v0) and Tapscript (SegWit v1) contexts
 - **Descriptor Support**: Full Bitcoin Core descriptor parsing with BIP32 key derivation
 - **Type Safety**: Safe Rust wrapper with proper memory management and error handling
