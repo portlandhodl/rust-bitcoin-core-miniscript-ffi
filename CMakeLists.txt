@@ -67,6 +67,8 @@ add_compile_definitions(
 # Windows-specific definitions
 if(WIN32 OR MSVC)
   add_compile_definitions(WIN32)
+  # NOMINMAX prevents Windows.h from defining min/max macros that conflict with std::numeric_limits
+  add_compile_definitions(NOMINMAX)
   # Enable exception handling for MSVC
   if(MSVC)
     add_compile_options(/EHsc)
@@ -109,6 +111,9 @@ set(BITCOIN_CORE_SOURCES
     ${BITCOIN_SRC_DIR}/util/strencodings.cpp
     ${BITCOIN_SRC_DIR}/util/string.cpp
     ${BITCOIN_SRC_DIR}/util/spanparsing.cpp
+
+    # Threading (required for args.h LOCK macro)
+    ${BITCOIN_SRC_DIR}/sync.cpp
 )
 
 set(BITCOIN_SOURCES_FILTERED)
