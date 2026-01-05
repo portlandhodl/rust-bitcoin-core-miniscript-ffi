@@ -677,8 +677,8 @@ mod tests {
     #[test]
     fn test_tpub_descriptor_with_testnet() {
         // Parse tpub descriptor with testnet network using builder pattern
-        // Using a known-good tpub from the test suite
-        let desc_str = "wpkh(tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/*)";
+        // Using a tpub with key origin info (required for proper validation)
+        let desc_str = "wpkh([a0d3c79c/48'/1'/0'/2']tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/*)";
 
         match Descriptor::for_network(Network::Testnet).parse(desc_str) {
             Ok(desc) => {
@@ -699,7 +699,8 @@ mod tests {
     #[test]
     fn test_xpub_descriptor_with_mainnet() {
         // Parse xpub descriptor with mainnet network using builder pattern
-        let desc_str = "wpkh(xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y/0)";
+        // Using an xpub with key origin info (required for proper validation)
+        let desc_str = "wpkh([00000000/44'/0'/0']xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y/0)";
 
         match Descriptor::for_network(Network::Mainnet).parse(desc_str) {
             Ok(desc) => {
