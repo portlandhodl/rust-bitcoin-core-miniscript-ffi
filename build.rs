@@ -2,7 +2,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const BITCOIN_CORE_VERSION: &str = "v30.1";
+const BITCOIN_CORE_VERSION: &str = "v30.2";
 const BITCOIN_CORE_REPO: &str = "https://github.com/bitcoin/bitcoin.git";
 
 fn main() {
