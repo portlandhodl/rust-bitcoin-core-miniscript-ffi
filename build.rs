@@ -4,6 +4,11 @@ use std::process::Command;
 
 const BITCOIN_CORE_VERSION: &str = "v31.1";
 const BITCOIN_CORE_REPO: &str = "https://github.com/bitcoin/bitcoin.git";
+/// Full commit hash the `v31.1` tag must resolve to. Pinned so that a moved
+/// tag or a MITM serving different sources fails the build instead of
+/// silently compiling unverified "consensus reference" code. Keep in sync
+/// with the `vendor/bitcoin` submodule pointer.
+const BITCOIN_CORE_COMMIT: &str = "9be056a8a72b624dae9623b2f7bded92c2a21c91";
 
 fn main() {
     if env::var("DOCS_RS").is_ok() {
@@ -89,6 +94,18 @@ fn get_bitcoin_source(manifest_dir: &Path, out_dir: &Path) -> PathBuf {
     let vendor_src = manifest_dir.join("vendor/bitcoin/src");
     if vendor_src.join("script/miniscript.h").exists() {
         println!("cargo:warning=Using Bitcoin Core from vendor/bitcoin");
+        // If the vendored copy is a git checkout (submodule), it must match
+        // the pinned commit: a mismatch means the submodule was not updated
+        // together with BITCOIN_CORE_VERSION. Developers who intentionally
+        // hack on Core sources can use BITCOIN_CORE_SRC (explicitly
+        // unverified) instead.
+        if let Some(head) = git_head(&vendor_src) {
+            assert!(
+                head == BITCOIN_CORE_COMMIT,
+                "vendor/bitcoin is at {head}, expected {BITCOIN_CORE_COMMIT} ({BITCOIN_CORE_VERSION}). \
+                 Update the submodule or fix BITCOIN_CORE_COMMIT."
+            );
+        }
         return vendor_src;
     }
 
@@ -96,14 +113,28 @@ fn get_bitcoin_source(manifest_dir: &Path, out_dir: &Path) -> PathBuf {
         let src = PathBuf::from(&src_path);
         if src.join("script/miniscript.h").exists() {
             println!("cargo:warning=Using Bitcoin Core from BITCOIN_CORE_SRC={src_path}");
+            // Explicit user-provided escape hatch: used as-is, unverified.
             return src;
         }
+    }
+
+    // With the `vendored` feature, never touch the network: require one of
+    // the two source options above.
+    if env::var_os("CARGO_FEATURE_VENDORED").is_some() {
+        panic!(
+            "The `vendored` feature is enabled but no vendored Bitcoin Core sources were found. \
+             Either clone with --recursive (git submodule update --init --recursive) or set \
+             BITCOIN_CORE_SRC to a Bitcoin Core src directory."
+        );
     }
 
     let bitcoin_dir = out_dir.join("bitcoin");
     let bitcoin_src = bitcoin_dir.join("src");
 
     if bitcoin_src.join("script/miniscript.h").exists() {
+        // Verify the cached checkout before reusing it: a poisoned or
+        // tag-moved cache must not be trusted silently.
+        verify_bitcoin_commit(&bitcoin_dir);
         println!(
             "cargo:warning=Using cached Bitcoin Core from {}",
             bitcoin_dir.display()
@@ -138,8 +169,39 @@ fn get_bitcoin_source(manifest_dir: &Path, out_dir: &Path) -> PathBuf {
         "Bitcoin Core downloaded but miniscript.h not found!"
     );
 
+    // Verify the downloaded sources are exactly the pinned commit.
+    verify_bitcoin_commit(&bitcoin_dir);
+
     println!("cargo:warning=Bitcoin Core {BITCOIN_CORE_VERSION} downloaded successfully");
     bitcoin_src
+}
+
+/// Return the HEAD commit of the git checkout containing `src_dir`
+/// (`src_dir` may be the `src/` subdirectory of the checkout), if any.
+fn git_head(src_dir: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["-C", src_dir.to_str().unwrap(), "rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let head = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if head.is_empty() { None } else { Some(head) }
+}
+
+/// Fail the build unless the Bitcoin Core checkout is exactly the pinned
+/// commit for [`BITCOIN_CORE_VERSION`].
+fn verify_bitcoin_commit(bitcoin_dir: &Path) {
+    let head = git_head(&bitcoin_dir.join("src")).unwrap_or_default();
+    assert!(
+        head == BITCOIN_CORE_COMMIT,
+        "Bitcoin Core checkout at {} is commit {head}, expected {BITCOIN_CORE_COMMIT} \
+         ({BITCOIN_CORE_VERSION}). Refusing to build against unverified sources. \
+         Delete {} to re-download, or set BITCOIN_CORE_SRC.",
+        bitcoin_dir.display(),
+        bitcoin_dir.display(),
+    );
 }
 
 #[allow(clippy::too_many_lines)]
