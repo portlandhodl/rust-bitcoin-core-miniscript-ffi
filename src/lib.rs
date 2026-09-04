@@ -238,7 +238,9 @@ pub use descriptor::{
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::fmt;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Re-export bitcoin types for convenience
 pub use bitcoin::Witness;
@@ -675,38 +677,63 @@ impl std::fmt::Debug for SatisfyResult {
 
 // FFI callback trampolines
 
-/// FFI callback function for signing operations.
+/// Shared context passed through the FFI to the callback trampolines.
 ///
-/// This function is called by the C++ miniscript implementation when it needs
-/// a signature for a given key during satisfaction. It acts as a trampoline
-/// between the C++ code and the Rust `Satisfier` trait implementation.
+/// Boxed and leaked for the duration of a single `miniscript_satisfy` call;
+/// reclaimed with `Box::from_raw` once the call returns.
+struct SatisfierContext {
+    /// The user's satisfier implementation.
+    satisfier: Box<dyn Satisfier>,
+    /// Set when a callback panicked. Once poisoned, every subsequent callback
+    /// during the same `satisfy` call short-circuits so a panicked (possibly
+    /// inconsistent) satisfier is never invoked again.
+    panicked: AtomicBool,
+}
+
+/// Fetch the satisfier context, returning `None` if null or poisoned.
 ///
 /// # Safety
 ///
-/// This function is marked as safe but contains an unsafe block because:
-/// - It is only called from C++ code via the FFI boundary
-/// - The caller (C++ code) guarantees that:
-///   - `context` is a valid pointer created by `Box::into_raw(Box::new(Box<dyn Satisfier>))`
-///   - `key_bytes` is a valid pointer to `key_len` bytes
-///   - `sig_out` and `sig_len_out` are valid, non-null pointers
+/// `context` must be null or point to a live [`SatisfierContext`] for the
+/// duration of the call.
+unsafe fn satisfier_ctx(context: *mut std::ffi::c_void) -> Option<&'static SatisfierContext> {
+    if context.is_null() {
+        return None;
+    }
+    // SAFETY: upheld by the caller (see above).
+    let ctx = unsafe { &*(context as *const SatisfierContext) };
+    if ctx.panicked.load(Ordering::SeqCst) {
+        None
+    } else {
+        Some(ctx)
+    }
+}
+
+/// Record that a callback panicked so the satisfier is never re-entered.
+fn mark_panicked(context: *mut std::ffi::c_void) {
+    if !context.is_null() {
+        // SAFETY: `context` points to a live `SatisfierContext` (non-null checked).
+        unsafe { &*(context as *const SatisfierContext) }
+            .panicked
+            .store(true, Ordering::SeqCst);
+    }
+}
+
+/// FFI callback function for signing operations.
+///
+/// Called by the C++ miniscript implementation when it needs a signature for a
+/// given key during satisfaction. A panic inside the user's `Satisfier` is
+/// contained with `catch_unwind` (unwinding across an `extern "C"` boundary
+/// would abort the whole process) and reported as `Availability::No`; the
+/// satisfier is additionally poisoned so it is never re-entered.
+///
+/// # Safety
+///
+/// Only called from C++ during `miniscript_satisfy`. The caller guarantees:
+/// - `context` points to a live `SatisfierContext` created in `satisfy()`
+/// - `key_bytes` points to `key_len` valid bytes (or is null if `key_len == 0`)
+/// - `sig_out` and `sig_len_out` are valid output pointers
 /// - Memory allocated with `libc::malloc` is freed by the C++ caller
-///
-/// # Invariants
-///
-/// - The `context` pointer must remain valid for the duration of the callback
-/// - The callback must not panic (panics across FFI boundaries are UB)
-///
-/// # Parameters
-///
-/// * `context` - Raw pointer to a boxed `Satisfier` trait object
-/// * `key_bytes` - Pointer to the key bytes to sign with
-/// * `key_len` - Length of the key bytes
-/// * `sig_out` - Output pointer for the signature bytes (allocated with malloc)
-/// * `sig_len_out` - Output pointer for the signature length
-///
-/// # Returns
-///
-/// Returns a `MiniscriptAvailability` indicating whether the signature is available.
 extern "C" fn sign_callback(
     context: *mut std::ffi::c_void,
     key_bytes: *const u8,
@@ -714,17 +741,41 @@ extern "C" fn sign_callback(
     sig_out: *mut *mut u8,
     sig_len_out: *mut usize,
 ) -> MiniscriptAvailability {
-    // SAFETY: This callback is only invoked by the C++ miniscript library during
-    // the `satisfy` call. The invariants are:
-    // 1. `context` was created by `Box::into_raw(Box::new(boxed_satisfier))` in `satisfy()`
-    // 2. `key_bytes` points to valid memory of `key_len` bytes (from C++ std::vector)
-    // 3. `sig_out` and `sig_len_out` are valid output pointers (stack-allocated in C++)
-    // 4. The satisfier outlives this callback (it's freed after `miniscript_satisfy` returns)
-    unsafe {
-        let satisfier = &*(context as *const Box<dyn Satisfier>);
-        let key = std::slice::from_raw_parts(key_bytes, key_len);
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        sign_callback_inner(context, key_bytes, key_len, sig_out, sig_len_out)
+    }))
+    .unwrap_or_else(|_| {
+        mark_panicked(context);
+        MiniscriptAvailability::MINISCRIPT_AVAILABILITY_NO
+    })
+}
 
-        let (avail, sig) = satisfier.sign(key);
+/// Inner body of [`sign_callback`], always invoked under `catch_unwind`.
+///
+/// # Safety
+///
+/// Same contract as [`sign_callback`].
+unsafe fn sign_callback_inner(
+    context: *mut std::ffi::c_void,
+    key_bytes: *const u8,
+    key_len: usize,
+    sig_out: *mut *mut u8,
+    sig_len_out: *mut usize,
+) -> MiniscriptAvailability {
+    // SAFETY: `context` was created by `Box::into_raw` in `satisfy()` and
+    // remains valid until `miniscript_satisfy` returns; `key_bytes`/`sig_out`/
+    // `sig_len_out` validity is guaranteed by the C++ caller.
+    unsafe {
+        let Some(ctx) = satisfier_ctx(context) else {
+            return MiniscriptAvailability::MINISCRIPT_AVAILABILITY_NO;
+        };
+        let key = if key_bytes.is_null() {
+            &[]
+        } else {
+            std::slice::from_raw_parts(key_bytes, key_len)
+        };
+
+        let (avail, sig) = ctx.satisfier.sign(key);
 
         if let Some(sig_data) = sig {
             let len = sig_data.len();
@@ -761,12 +812,15 @@ extern "C" fn sign_callback(
 ///
 /// Returns `true` if the timelock is satisfied, `false` otherwise.
 extern "C" fn check_after_callback(context: *mut std::ffi::c_void, value: u32) -> bool {
-    // SAFETY: `context` was created by `Box::into_raw` in `satisfy()` and remains
-    // valid until after `miniscript_satisfy` returns.
-    unsafe {
-        let satisfier = &*(context as *const Box<dyn Satisfier>);
-        satisfier.check_after(value)
-    }
+    // A user panic is contained: report "not satisfied" and poison the
+    // satisfier (see sign_callback).
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        satisfier_ctx(context).is_some_and(|ctx| ctx.satisfier.check_after(value))
+    }))
+    .unwrap_or_else(|_| {
+        mark_panicked(context);
+        false
+    })
 }
 
 /// FFI callback function for checking relative timelock satisfaction.
@@ -790,12 +844,15 @@ extern "C" fn check_after_callback(context: *mut std::ffi::c_void, value: u32) -
 ///
 /// Returns `true` if the relative timelock is satisfied, `false` otherwise.
 extern "C" fn check_older_callback(context: *mut std::ffi::c_void, value: u32) -> bool {
-    // SAFETY: `context` was created by `Box::into_raw` in `satisfy()` and remains
-    // valid until after `miniscript_satisfy` returns.
-    unsafe {
-        let satisfier = &*(context as *const Box<dyn Satisfier>);
-        satisfier.check_older(value)
-    }
+    // A user panic is contained: report "not satisfied" and poison the
+    // satisfier (see sign_callback).
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        satisfier_ctx(context).is_some_and(|ctx| ctx.satisfier.check_older(value))
+    }))
+    .unwrap_or_else(|_| {
+        mark_panicked(context);
+        false
+    })
 }
 
 /// FFI callback function for SHA256 hash preimage satisfaction.
@@ -830,26 +887,20 @@ extern "C" fn sat_sha256_callback(
     preimage_out: *mut *mut u8,
     preimage_len_out: *mut usize,
 ) -> MiniscriptAvailability {
-    // SAFETY: See function-level safety documentation. All pointers are valid
-    // for the duration of the callback as guaranteed by the C++ caller.
-    unsafe {
-        let satisfier = &*(context as *const Box<dyn Satisfier>);
-        let hash_slice = std::slice::from_raw_parts(hash, hash_len);
-
-        let (avail, preimage) = satisfier.sat_sha256(hash_slice);
-
-        if let Some(preimage_data) = preimage {
-            let len = preimage_data.len();
-            let ptr = libc::malloc(len).cast::<u8>();
-            if !ptr.is_null() {
-                std::ptr::copy_nonoverlapping(preimage_data.as_ptr(), ptr, len);
-                *preimage_out = ptr;
-                *preimage_len_out = len;
-            }
-        }
-
-        avail.into()
-    }
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        sat_hash_callback_inner(
+            context,
+            hash,
+            hash_len,
+            preimage_out,
+            preimage_len_out,
+            |s, h| s.sat_sha256(h),
+        )
+    }))
+    .unwrap_or_else(|_| {
+        mark_panicked(context);
+        MiniscriptAvailability::MINISCRIPT_AVAILABILITY_NO
+    })
 }
 
 /// FFI callback function for RIPEMD160 hash preimage satisfaction.
@@ -884,26 +935,20 @@ extern "C" fn sat_ripemd160_callback(
     preimage_out: *mut *mut u8,
     preimage_len_out: *mut usize,
 ) -> MiniscriptAvailability {
-    // SAFETY: See function-level safety documentation. All pointers are valid
-    // for the duration of the callback as guaranteed by the C++ caller.
-    unsafe {
-        let satisfier = &*(context as *const Box<dyn Satisfier>);
-        let hash_slice = std::slice::from_raw_parts(hash, hash_len);
-
-        let (avail, preimage) = satisfier.sat_ripemd160(hash_slice);
-
-        if let Some(preimage_data) = preimage {
-            let len = preimage_data.len();
-            let ptr = libc::malloc(len).cast::<u8>();
-            if !ptr.is_null() {
-                std::ptr::copy_nonoverlapping(preimage_data.as_ptr(), ptr, len);
-                *preimage_out = ptr;
-                *preimage_len_out = len;
-            }
-        }
-
-        avail.into()
-    }
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        sat_hash_callback_inner(
+            context,
+            hash,
+            hash_len,
+            preimage_out,
+            preimage_len_out,
+            |s, h| s.sat_ripemd160(h),
+        )
+    }))
+    .unwrap_or_else(|_| {
+        mark_panicked(context);
+        MiniscriptAvailability::MINISCRIPT_AVAILABILITY_NO
+    })
 }
 
 /// FFI callback function for HASH256 (double SHA256) hash preimage satisfaction.
@@ -939,26 +984,20 @@ extern "C" fn sat_hash256_callback(
     preimage_out: *mut *mut u8,
     preimage_len_out: *mut usize,
 ) -> MiniscriptAvailability {
-    // SAFETY: See function-level safety documentation. All pointers are valid
-    // for the duration of the callback as guaranteed by the C++ caller.
-    unsafe {
-        let satisfier = &*(context as *const Box<dyn Satisfier>);
-        let hash_slice = std::slice::from_raw_parts(hash, hash_len);
-
-        let (avail, preimage) = satisfier.sat_hash256(hash_slice);
-
-        if let Some(preimage_data) = preimage {
-            let len = preimage_data.len();
-            let ptr = libc::malloc(len).cast::<u8>();
-            if !ptr.is_null() {
-                std::ptr::copy_nonoverlapping(preimage_data.as_ptr(), ptr, len);
-                *preimage_out = ptr;
-                *preimage_len_out = len;
-            }
-        }
-
-        avail.into()
-    }
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        sat_hash_callback_inner(
+            context,
+            hash,
+            hash_len,
+            preimage_out,
+            preimage_len_out,
+            |s, h| s.sat_hash256(h),
+        )
+    }))
+    .unwrap_or_else(|_| {
+        mark_panicked(context);
+        MiniscriptAvailability::MINISCRIPT_AVAILABILITY_NO
+    })
 }
 
 /// FFI callback function for HASH160 (RIPEMD160 of SHA256) hash preimage satisfaction.
@@ -994,13 +1033,51 @@ extern "C" fn sat_hash160_callback(
     preimage_out: *mut *mut u8,
     preimage_len_out: *mut usize,
 ) -> MiniscriptAvailability {
-    // SAFETY: See function-level safety documentation. All pointers are valid
-    // for the duration of the callback as guaranteed by the C++ caller.
-    unsafe {
-        let satisfier = &*(context as *const Box<dyn Satisfier>);
-        let hash_slice = std::slice::from_raw_parts(hash, hash_len);
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        sat_hash_callback_inner(
+            context,
+            hash,
+            hash_len,
+            preimage_out,
+            preimage_len_out,
+            |s, h| s.sat_hash160(h),
+        )
+    }))
+    .unwrap_or_else(|_| {
+        mark_panicked(context);
+        MiniscriptAvailability::MINISCRIPT_AVAILABILITY_NO
+    })
+}
 
-        let (avail, preimage) = satisfier.sat_hash160(hash_slice);
+/// Shared inner body of the four hash-preimage callbacks, always invoked
+/// under `catch_unwind`.
+///
+/// # Safety
+///
+/// `context` must be null or point to a live `SatisfierContext`; `hash` must
+/// point to `hash_len` valid bytes (or be null if `hash_len == 0`);
+/// `preimage_out`/`preimage_len_out` must be valid output pointers. Memory
+/// allocated with `libc::malloc` is freed by the C++ caller.
+unsafe fn sat_hash_callback_inner(
+    context: *mut std::ffi::c_void,
+    hash: *const u8,
+    hash_len: usize,
+    preimage_out: *mut *mut u8,
+    preimage_len_out: *mut usize,
+    get_preimage: impl FnOnce(&dyn Satisfier, &[u8]) -> (Availability, Option<Vec<u8>>),
+) -> MiniscriptAvailability {
+    // SAFETY: upheld by the C++ caller (see above).
+    unsafe {
+        let Some(ctx) = satisfier_ctx(context) else {
+            return MiniscriptAvailability::MINISCRIPT_AVAILABILITY_NO;
+        };
+        let hash_slice = if hash.is_null() {
+            &[]
+        } else {
+            std::slice::from_raw_parts(hash, hash_len)
+        };
+
+        let (avail, preimage) = get_preimage(&*ctx.satisfier, hash_slice);
 
         if let Some(preimage_data) = preimage {
             let len = preimage_data.len();
@@ -1381,12 +1458,15 @@ impl Miniscript {
         satisfier: S,
         nonmalleable: bool,
     ) -> Result<SatisfyResult, Error> {
-        // Box the satisfier so we can pass it through FFI
-        let boxed: Box<dyn Satisfier> = Box::new(satisfier);
-        let boxed_ptr = Box::into_raw(Box::new(boxed));
+        // Box the satisfier (with a panic-poison flag) so we can pass it
+        // through FFI. The box is reclaimed after the C++ call returns.
+        let context_ptr = Box::into_raw(Box::new(SatisfierContext {
+            satisfier: Box::new(satisfier),
+            panicked: AtomicBool::new(false),
+        }));
 
         let callbacks = SatisfierCallbacks {
-            rust_context: boxed_ptr.cast::<std::ffi::c_void>(),
+            rust_context: context_ptr.cast::<std::ffi::c_void>(),
             sign_callback: Some(sign_callback),
             check_after_callback: Some(check_after_callback),
             check_older_callback: Some(check_older_callback),
@@ -1400,9 +1480,9 @@ impl Miniscript {
         let mut result =
             unsafe { miniscript_satisfy(self.ptr, &raw const callbacks, nonmalleable) };
 
-        // Clean up the boxed satisfier
+        // Clean up the boxed satisfier context
         unsafe {
-            let _ = Box::from_raw(boxed_ptr);
+            let _ = Box::from_raw(context_ptr);
         }
 
         // Check for errors
