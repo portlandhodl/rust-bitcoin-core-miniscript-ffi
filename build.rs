@@ -341,7 +341,6 @@ unsafe extern "C" {
     pub fn descriptor_get_address(
         node: *const DescriptorNode,
         pos: ::std::os::raw::c_int,
-        network: DescriptorNetwork,
     ) -> *mut ::std::os::raw::c_char;
 
     pub fn descriptor_get_pubkeys(

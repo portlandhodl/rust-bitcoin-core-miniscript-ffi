@@ -469,8 +469,9 @@ impl Descriptor {
         // Indices >= 2^31 wrap to negative `int` in C++; reject them here.
         let index = i32::try_from(index).ok()?;
 
-        let ptr = unsafe { ffi::descriptor_get_address(self.node, index, self.network.to_ffi()) };
-
+        // The C++ side encodes using the network stored in the descriptor at
+        // parse time, selected under the global params mutex.
+        let ptr = unsafe { ffi::descriptor_get_address(self.node, index) };
         if ptr.is_null() {
             return None;
         }

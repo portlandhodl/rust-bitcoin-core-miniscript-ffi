@@ -23,9 +23,13 @@ static const char* DESCRIPTOR_VERSION_STRING = "0.1.0";
 struct DescriptorNode {
     std::unique_ptr<Descriptor> descriptor;
     FlatSigningProvider provider;
+    // The network this descriptor was parsed with. Key (de)serialization and
+    // address encoding depend on the global chain parameters, so any operation
+    // that touches them must select these params under GetParamsMutex().
+    DescriptorNetwork network;
 
-    DescriptorNode(std::unique_ptr<Descriptor>&& desc, FlatSigningProvider&& prov)
-        : descriptor(std::move(desc)), provider(std::move(prov)) {}
+    DescriptorNode(std::unique_ptr<Descriptor>&& desc, FlatSigningProvider&& prov, DescriptorNetwork net)
+        : descriptor(std::move(desc)), provider(std::move(prov)), network(net) {}
 };
 
 static char* strdup_safe(const char* str) {
@@ -94,7 +98,7 @@ DescriptorResult descriptor_parse_with_network(const char* descriptor_str, Descr
         }
 
         // Take the first descriptor (Parse can return multiple for combo())
-        *out_node = new DescriptorNode(std::move(descriptors[0]), std::move(provider));
+        *out_node = new DescriptorNode(std::move(descriptors[0]), std::move(provider), network);
         result.success = true;
 
     } catch (const std::exception& e) {
@@ -126,6 +130,13 @@ char* descriptor_to_string(const DescriptorNode* node) {
     }
 
     try {
+        // Descriptor::ToString() serializes extended keys via EncodeExtPubKey,
+        // which reads the global chain parameters. Select this descriptor's
+        // network and hold the mutex so a concurrent parse on another thread
+        // cannot flip the parameters mid-serialization.
+        std::lock_guard<std::mutex> lock(GetParamsMutex());
+        SelectParams(static_cast<int>(node->network));
+
         std::string str = node->descriptor->ToString();
         return strdup_safe(str);
     } catch (...) {
@@ -166,12 +177,22 @@ bool descriptor_expand(const DescriptorNode* node, int pos,
     return false;
 }
 
-char* descriptor_get_address(const DescriptorNode* node, int pos, DescriptorNetwork network) {
+char* descriptor_get_address(const DescriptorNode* node, int pos) {
     if (!node || !node->descriptor) {
         return nullptr;
     }
 
     try {
+        // EncodeDestination() reads the global chain parameters (bech32 HRP,
+        // base58 prefixes). Hold the params mutex for the whole operation and
+        // select the network this descriptor was parsed with; previously the
+        // network argument was ignored and the address was encoded with
+        // whichever network the most recent parse happened to select, which
+        // both produced wrong-network addresses and raced with concurrent
+        // parses (a data race on g_current_params).
+        std::lock_guard<std::mutex> lock(GetParamsMutex());
+        SelectParams(static_cast<int>(node->network));
+
         std::vector<CScript> scripts;
         FlatSigningProvider out_provider;
         DescriptorCache cache;
@@ -214,8 +235,8 @@ char* descriptor_get_address(const DescriptorNode* node, int pos, DescriptorNetw
             }
         }
 
-        // Encode the address - Bitcoin Core's EncodeDestination uses global chain params
-        // For now, we just use the default encoding
+        // Encode the address for this descriptor's network (params selected
+        // above under the params mutex)
         std::string address = EncodeDestination(dest);
 
         return strdup_safe(address);

@@ -360,11 +360,6 @@ void SelectParams(int network) {
 // Include the header for DescriptorNetwork enum
 #include "descriptor_wrapper.h"
 
-// Exported function to select chain parameters from Rust
-extern "C" void descriptor_select_params(DescriptorNetwork network) {
-    SelectParams(static_cast<int>(network));
-}
-
 // Taproot hash functions.
 //
 // These MUST match Bitcoin Core's consensus behavior exactly: tr() descriptors
