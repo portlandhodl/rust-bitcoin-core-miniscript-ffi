@@ -475,8 +475,14 @@ uint256 ComputeTaprootMerkleRoot(std::span<const unsigned char> control, const u
 #include <optional>
 
 // HD keypath formatting stub
+// Must match Bitcoin Core's util/bip32.cpp FormatHDKeypath exactly: elements
+// are "/"-prefixed with no leading "m" (the "m" root marker is added by
+// WriteHDKeypath, not by this function). Prepending "m" here corrupted
+// Descriptor::ToString() output for any key carrying origin info or a BIP32
+// path ("[fde3c191/44'/0'/0']xpub.../0/*" round-tripped as
+// "[fde3c191m/44'/0'/0']xpub...m/0/*", which no longer parses).
 std::string FormatHDKeypath(const std::vector<uint32_t>& path, bool apostrophe) {
-    std::string result = "m";
+    std::string result;
     for (uint32_t index : path) {
         result += "/";
         if (index & 0x80000000) {
