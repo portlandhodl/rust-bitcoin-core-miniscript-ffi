@@ -97,7 +97,29 @@ DescriptorResult descriptor_parse_with_network(const char* descriptor_str, Descr
             return result;
         }
 
-        // Take the first descriptor (Parse can return multiple for combo())
+        if (descriptors.size() != 1) {
+            // Defensive: fail closed if Parse() ever returns several
+            // descriptors for one input string.
+            result.error_message = strdup_safe(
+                "Descriptor expands to multiple output variants; "
+                "this API supports single-output descriptors only. "
+                "Use an explicit single-form descriptor (pkh/wpkh/sh/wsh/tr/...) instead.");
+            return result;
+        }
+
+        if (!descriptors[0]->IsSingleType()) {
+            // combo() produces several output scripts (P2PK, P2PKH, P2WPKH,
+            // P2SH-P2WPKH) from one descriptor. This API models a single
+            // descriptor, so keeping only the first expanded script would
+            // silently drop the other standard outputs from expansion,
+            // address generation, and watch-only monitoring. Fail closed.
+            result.error_message = strdup_safe(
+                "combo() descriptors produce multiple output variants and are not "
+                "supported by this single-output API. "
+                "Use an explicit single-form descriptor (pkh/wpkh/sh/wsh/tr/...) instead.");
+            return result;
+        }
+
         *out_node = new DescriptorNode(std::move(descriptors[0]), std::move(provider), network);
         result.success = true;
 

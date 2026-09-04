@@ -33,8 +33,9 @@ This crate provides direct access to Bitcoin Core's C++ miniscript parser, analy
 ### Descriptors
 - Parse all standard descriptor types: `pk()`, `pkh()`, `wpkh()`, `sh()`, `wsh()`, `tr()`
 - Full BIP32 extended key support (xpub/tpub derivation)
-- Multi-signature descriptors: `multi()`, `sortedmulti()`
+- Multi-signature descriptors: `multi()`, `sortedmulti()`; `musig()` for Taproot
 - Miniscript expressions within descriptors
+- Note: `combo()` descriptors are **rejected** — they produce multiple output variants (P2PK, P2PKH, P2WPKH, P2SH-P2WPKH) and this API models a single descriptor, so silently keeping only one variant would be wrong. Use the explicit single form you need (e.g. `wpkh(...)`) instead.
 - Address generation for all networks (mainnet, testnet, signet, regtest)
 - Public key extraction at any derivation index
 - Script expansion and size calculation

@@ -231,21 +231,31 @@ fn test_rawtr_with_derivation() {
 
 #[test]
 fn test_combo_with_xpub() {
-    // combo() with xpub (produces multiple script types)
+    // combo() produces multiple output variants (p2pk, p2pkh, p2wpkh, ...).
+    // The wrapper API models a single descriptor, so combo() is rejected
+    // explicitly rather than silently keeping only the first variant.
     let desc_str = "combo(xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL)";
-    let desc = check_parse_success(desc_str);
-
-    assert!(!desc.is_range(), "Should not be ranged");
-    // combo() produces multiple outputs, so expansion behavior may differ
+    check_parse_failure(desc_str, "combo()");
 }
 
 #[test]
 fn test_combo_with_ranged_xpub() {
-    // combo() with ranged xpub
+    // Ranged combo() must be rejected for the same reason.
     let desc_str = "combo(xpub6FHa3pjLCk84BayeJxFW2SP4XRrFd1JYnxeLeU8EqN3vDfZmbqBqaGJAyiLjTAwm6ZLRQUMv1ZACTj37sR62cfN7fe5JnJ7dh8zL4fiyLHV/*)";
-    let desc = check_parse_success(desc_str);
+    check_parse_failure(desc_str, "combo()");
+}
 
-    assert!(desc.is_range(), "Should be ranged");
+#[test]
+fn test_combo_rejection_is_explicit() {
+    // Fail-closed: the error must name the problem and the remediation.
+    let desc_str = "combo(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)";
+    match Descriptor::for_network(Network::Mainnet).parse(desc_str) {
+        Ok(_) => panic!("combo() must not parse as a singular descriptor"),
+        Err(e) => {
+            assert!(e.contains("multiple output variants"), "error: {e}");
+            assert!(e.contains("combo()"), "error: {e}");
+        }
+    }
 }
 
 #[test]
