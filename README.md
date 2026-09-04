@@ -58,6 +58,22 @@ This crate requires:
 - **Boost 1.73+** (headers only)
 - **Bitcoin Core source code** (automatically included as a git submodule)
 
+If the vendored submodule is missing (e.g. when building the crate from
+crates.io, which excludes `vendor/`), the build downloads Bitcoin Core from
+GitHub and **verifies the checkout is exactly the pinned commit** matching
+`BITCOIN_CORE_VERSION` in `build.rs`. To opt out of network access at build
+time, enable the `vendored` feature and provide sources via the submodule or
+`BITCOIN_CORE_SRC`:
+
+```toml
+[dependencies]
+bitcoin-core-miniscript-ffi = { version = "0.5", features = ["vendored"] }
+```
+
+```bash
+export BITCOIN_CORE_SRC=/path/to/bitcoin/src  # required on crates.io builds
+```
+
 #### Linux (Debian/Ubuntu)
 
 ```bash
