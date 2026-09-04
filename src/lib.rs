@@ -277,13 +277,17 @@ pub use bitcoin::taproot::Signature as SchnorrSignature;
 pub enum Context {
     /// P2WSH context (`SegWit` v0)
     ///
-    /// Used for Pay-to-Witness-Script-Hash outputs. Has a 10,000 byte script
-    /// size limit and uses ECDSA signatures.
+    /// Used for Pay-to-Witness-Script-Hash outputs. Enforces Bitcoin Core's
+    /// 3,600-byte standardness script size limit
+    /// (`MAX_STANDARD_P2WSH_SCRIPT_SIZE`) and uses ECDSA signatures. (The
+    /// separate 520-byte consensus limit applies to individual witness stack
+    /// items, not to the script.)
     Wsh,
     /// Tapscript context (`SegWit` v1)
     ///
-    /// Used for Taproot script paths. Has a larger script size limit and
-    /// uses Schnorr signatures. Some opcodes like `OP_CHECKMULTISIG` are
+    /// Used for Taproot script paths. Script size is bounded by the maximum
+    /// standard transaction weight rather than a fixed byte limit, and uses
+    /// Schnorr signatures. Some opcodes like `OP_CHECKMULTISIG` are
     /// disabled in favor of `OP_CHECKSIGADD`.
     Tapscript,
 }

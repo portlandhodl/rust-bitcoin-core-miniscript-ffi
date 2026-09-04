@@ -377,9 +377,12 @@ Script context for miniscript parsing.
 
 ```rust
 pub enum Context {
-    /// P2WSH context (SegWit v0) - 520 byte script limit
+    /// P2WSH context (SegWit v0) - 3,600 byte standardness script limit
+    /// (MAX_STANDARD_P2WSH_SCRIPT_SIZE); witness stack items limited to
+    /// 520 bytes by consensus
     Wsh,
-    /// Tapscript context (SegWit v1) - no script size limit, x-only pubkeys
+    /// Tapscript context (SegWit v1) - script size bounded by standard
+    /// transaction weight; x-only pubkeys
     Tapscript,
 }
 ```
