@@ -7,11 +7,12 @@ use bitcoin::address::Address;
 use bitcoin::hashes::{Hash, sha256};
 use miniscript_core_ffi::{Context, Miniscript};
 
-/// The problematic descriptor from production (with concrete indices /0/0)
+/// Descriptor reported in a parsing issue (concrete indices /0/0).
+/// Public testnet fixture: tpub extended *public* keys only; no secret material.
 const PROBLEM_DESCRIPTOR: &str = "wsh(andor(multi(2,[a0d3c79c/48'/1'/0'/2']tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/0,[ea2484f9/48'/1'/0'/2']tpubDFQZzjy6GwSV6yk3X3aDZ6ETfoiNaquKhQHQ2EBG9jysaVqv7gMDBdUjYizYC1Sx8iQ41Rdxir64wcZrH8jZAeg8dhyGQFfKkGFkL3y6wnC/0/0,[93f245d7/48'/1'/0'/2']tpubDFNSUCdEmqX1HKkf3ykVz2VyuTsCja3dheQXiKmDyfDqTE9BD2Gmm3nszWRg8YBktEoTGYVS4waGqkEuycpiDnGcScrC2h4wVzDuq6RR7jT/0/0),or_i(and_v(v:pkh([61cdf766/84'/1'/0'/0]tpubDEmyALkSddGqCaSewWiCm2UA9ESmwtoq4RW4RJdkveAgbzfURVe3HgqfWX6b8f9w68JXjbPfUDRACPSoZg1qG4APr2W6P5yi6z7APjHrvzQ/0/0),after(1748563200)),thresh(2,pk([dc222dd4/48'/1'/0'/2']tpubDEsjRwVZFMds9KRH7J1sJ8RfQhZ6z7bD76fei4Bmgvo585dy9prVtiZy9R99tQoLiXPcAmbgoEzM6vtnhJ8TtyA6fWDwratqjW29p1DzZVF/0/0),s:pk([c95919a9/48'/1'/0'/2']tpubDF6xx8MeBmvwAcDsjFsukYfDdTfJnhQXMnRdSLW9uMvGsjv4Lw9cL9DxHgNzXRHdgVnnvrm5cBTs2ckhYms3NK3eyPYxRtUbsBUypPuqPrs/0/0),s:pk([9aeb59b9/48'/1'/0'/2']tpubDEWbaBvvddXg7kaGYiAZZZZG6H9j4ojR2SeJGWWFVGHcoEgyRGpPEaFdqmJs9XTX8jU7dWfSUDXiJuc8f54rBR7JdHeMLVB5bbpDijsvWdS/0/0),snl:after(1735171200))),and_v(v:thresh(2,pkh([dc222dd4/48'/1'/0'/2']tpubDEsjRwVZFMds9KRH7J1sJ8RfQhZ6z7bD76fei4Bmgvo585dy9prVtiZy9R99tQoLiXPcAmbgoEzM6vtnhJ8TtyA6fWDwratqjW29p1DzZVF/2/0),a:pkh([c95919a9/48'/1'/0'/2']tpubDF6xx8MeBmvwAcDsjFsukYfDdTfJnhQXMnRdSLW9uMvGsjv4Lw9cL9DxHgNzXRHdgVnnvrm5cBTs2ckhYms3NK3eyPYxRtUbsBUypPuqPrs/2/0),a:pkh([9aeb59b9/48'/1'/0'/2']tpubDEWbaBvvddXg7kaGYiAZZZZG6H9j4ojR2SeJGWWFVGHcoEgyRGpPEaFdqmJs9XTX8jU7dWfSUDXiJuc8f54rBR7JdHeMLVB5bbpDijsvWdS/2/0)),after(1752451200))))";
 
-/// The descriptor with wildcards (/* instead of /0)
-/// This is the template form used for deriving multiple addresses
+/// The same descriptor with wildcards (/* instead of /0).
+/// Public testnet fixture, as above.
 const WILDCARD_DESCRIPTOR: &str = "wsh(andor(multi(2,[a0d3c79c/48'/1'/0'/2']tpubDF81GR3CqbLCT7ND3q4pPWDtpbkKfHihUMwVgQeXV9ZqJ6YJ5gJgd1W1cWbiVRfXfjc1KyRCRCpVUKVHVYjrPLbtbvRLB9L4hWfWyrZqGEL/0/*,[ea2484f9/48'/1'/0'/2']tpubDFQZzjy6GwSV6yk3X3aDZ6ETfoiNaquKhQHQ2EBG9jysaVqv7gMDBdUjYizYC1Sx8iQ41Rdxir64wcZrH8jZAeg8dhyGQFfKkGFkL3y6wnC/0/*,[93f245d7/48'/1'/0'/2']tpubDFNSUCdEmqX1HKkf3ykVz2VyuTsCja3dheQXiKmDyfDqTE9BD2Gmm3nszWRg8YBktEoTGYVS4waGqkEuycpiDnGcScrC2h4wVzDuq6RR7jT/0/*),or_i(and_v(v:pkh([61cdf766/84'/1'/0'/0]tpubDEmyALkSddGqCaSewWiCm2UA9ESmwtoq4RW4RJdkveAgbzfURVe3HgqfWX6b8f9w68JXjbPfUDRACPSoZg1qG4APr2W6P5yi6z7APjHrvzQ/0/*),after(1748563200)),thresh(2,pk([dc222dd4/48'/1'/0'/2']tpubDEsjRwVZFMds9KRH7J1sJ8RfQhZ6z7bD76fei4Bmgvo585dy9prVtiZy9R99tQoLiXPcAmbgoEzM6vtnhJ8TtyA6fWDwratqjW29p1DzZVF/0/*),s:pk([c95919a9/48'/1'/0'/2']tpubDF6xx8MeBmvwAcDsjFsukYfDdTfJnhQXMnRdSLW9uMvGsjv4Lw9cL9DxHgNzXRHdgVnnvrm5cBTs2ckhYms3NK3eyPYxRtUbsBUypPuqPrs/0/*),s:pk([9aeb59b9/48'/1'/0'/2']tpubDEWbaBvvddXg7kaGYiAZZZZG6H9j4ojR2SeJGWWFVGHcoEgyRGpPEaFdqmJs9XTX8jU7dWfSUDXiJuc8f54rBR7JdHeMLVB5bbpDijsvWdS/0/*),snl:after(1735171200))),and_v(v:thresh(2,pkh([dc222dd4/48'/1'/0'/2']tpubDEsjRwVZFMds9KRH7J1sJ8RfQhZ6z7bD76fei4Bmgvo585dy9prVtiZy9R99tQoLiXPcAmbgoEzM6vtnhJ8TtyA6fWDwratqjW29p1DzZVF/2/*),a:pkh([c95919a9/48'/1'/0'/2']tpubDF6xx8MeBmvwAcDsjFsukYfDdTfJnhQXMnRdSLW9uMvGsjv4Lw9cL9DxHgNzXRHdgVnnvrm5cBTs2ckhYms3NK3eyPYxRtUbsBUypPuqPrs/2/*),a:pkh([9aeb59b9/48'/1'/0'/2']tpubDEWbaBvvddXg7kaGYiAZZZZG6H9j4ojR2SeJGWWFVGHcoEgyRGpPEaFdqmJs9XTX8jU7dWfSUDXiJuc8f54rBR7JdHeMLVB5bbpDijsvWdS/2/*)),after(1752451200))))";
 
 /// Extract just the miniscript portion (inside wsh(...))
@@ -34,10 +35,9 @@ fn test_full_descriptor_parsing() {
 
     if let Some(miniscript_str) = extract_miniscript(PROBLEM_DESCRIPTOR) {
         println!(
-            "\nExtracted miniscript (length: {} chars):",
+            "\nExtracted miniscript (length: {} chars)",
             miniscript_str.len()
         );
-        println!("{miniscript_str}");
 
         let result = Miniscript::from_str(miniscript_str, Context::Wsh);
         match result {
@@ -384,17 +384,10 @@ fn test_descriptor_analysis() {
             println!("  Script size: {script_size} bytes");
         }
 
-        // Get the canonical string representation
-        if let Some(canonical) = ms.to_string() {
-            println!("\nCanonical form:");
-            println!("  {canonical}");
-        }
-
-        // Get the script bytes
-        if let Some(script) = ms.to_script() {
-            println!("\nScript (hex):");
-            println!("  {}", hex::encode(script.as_bytes()));
-        }
+        // Canonical string and script conversions must succeed (full
+        // artifacts are intentionally not printed to test/CI logs).
+        assert!(ms.to_string().is_some(), "to_string failed");
+        assert!(ms.to_script().is_some(), "to_script failed");
 
         // All assertions should pass
         assert!(ms.is_valid(), "Should be valid");

@@ -7,6 +7,9 @@
 
 #include <script/miniscript.h>
 #include <script/script.h>
+#include <hash.h>
+#include <uint256.h>
+#include <util/strencodings.h>
 
 static const char* VERSION_STRING = "0.3.0";
 
@@ -17,6 +20,63 @@ struct StringKey {
     StringKey(const std::string& s) : str(s) {}
     StringKey(std::string&& s) : str(std::move(s)) {}
 };
+
+// Convert a symbolic string key to its byte representation.
+//
+// String keys mirror Bitcoin Core's own miniscript test DSL, where keys are
+// identifiers like "Alice". This mapping MUST be identical for script
+// conversion (ToScript) and satisfaction (Satisfy), otherwise the produced
+// scripts and witnesses do not correspond (previously ToScript always
+// embedded zero-filled placeholders while Satisfy hex-parsed the string).
+//
+//   - even-length hex strings map to the raw bytes ("deadbeef" -> 4 bytes);
+//   - anything else maps to a zero-filled placeholder of the context's key
+//     size (33 bytes for P2WSH, 32 bytes for Tapscript).
+static std::vector<unsigned char> StringKeyToPKBytes(const std::string& str,
+                                                     miniscript::MiniscriptContext ms_ctx) {
+    if (!str.empty() && str.size() % 2 == 0) {
+        if (auto bytes = TryParseHex<unsigned char>(str)) {
+            return std::move(*bytes);
+        }
+    }
+    return std::vector<unsigned char>(
+        ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT ? 32 : 33, 0);
+}
+
+// Hex-encode key bytes for use as a StringKey label. Used when decoding raw
+// scripts (FromScript) so that decoded keys/hashes keep their identity
+// instead of all collapsing onto a constant label: the label round-trips
+// through StringKeyToPKBytes to exactly the original bytes.
+static std::string KeyBytesToHex(std::span<const unsigned char> bytes) {
+    static const char* digits = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (unsigned char b : bytes) {
+        out.push_back(digits[b >> 4]);
+        out.push_back(digits[b & 0x0f]);
+    }
+    return out;
+}
+
+// The pk_h() fragment requires the script's embedded hash to equal the
+// HASH160 of the pubkey bytes pushed by the witness (see the PK_H handling
+// in miniscript.h), so derive one from the other instead of returning an
+// unrelated zero placeholder.
+static std::vector<unsigned char> StringKeyToPKHBytes(const std::string& str,
+                                                      miniscript::MiniscriptContext ms_ctx) {
+    // A 40-character hex label carries a literal 20-byte key hash. This is how
+    // FromPKHBytes labels hashes decoded from raw scripts (matching how
+    // Bitcoin Core displays decoded pkh keys), which keeps
+    // from_script_bytes -> to_script_bytes round-trips exact for pkh nodes.
+    if (str.size() == 40) {
+        if (auto bytes = TryParseHex<unsigned char>(str)) {
+            return std::move(*bytes);
+        }
+    }
+    const std::vector<unsigned char> pk = StringKeyToPKBytes(str, ms_ctx);
+    const uint160 h = Hash160(pk);
+    return std::vector<unsigned char>(h.begin(), h.end());
+}
 
 struct StringKeyContext {
     using Key = StringKey;
@@ -41,24 +101,30 @@ struct StringKeyContext {
     }
 
     std::vector<unsigned char> ToPKBytes(const StringKey& key) const {
-        if (ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT) {
-            return std::vector<unsigned char>(32, 0);
-        }
-        return std::vector<unsigned char>(33, 0);
+        return StringKeyToPKBytes(key.str, ms_ctx);
     }
 
     std::vector<unsigned char> ToPKHBytes(const StringKey& key) const {
-        return std::vector<unsigned char>(20, 0);
+        return StringKeyToPKHBytes(key.str, ms_ctx);
     }
 
     template<typename I>
     std::optional<StringKey> FromPKBytes(I first, I last) const {
-        return StringKey("decoded_key");
+        // Preserve key identity: label the key with its own hex bytes, which
+        // StringKeyToPKBytes maps back to exactly these bytes. (Previously a
+        // constant "decoded_key" label collapsed every key in a decoded
+        // script onto one identity, corrupting to_string, re-serialization,
+        // duplicate-key analysis, and satisfier lookups.)
+        std::vector<unsigned char> bytes(first, last);
+        return StringKey(KeyBytesToHex(bytes));
     }
 
     template<typename I>
     std::optional<StringKey> FromPKHBytes(I first, I last) const {
-        return StringKey("decoded_pkh_key");
+        // Label key hashes with their own hex (40 chars), which
+        // StringKeyToPKHBytes recognizes as a literal hash.
+        std::vector<unsigned char> bytes(first, last);
+        return StringKey(KeyBytesToHex(bytes));
     }
 };
 
@@ -88,43 +154,28 @@ struct CallbackSatisfier {
     }
 
     std::vector<unsigned char> ToPKBytes(const StringKey& key) const {
-        // Convert key string to bytes - for string keys, we use the string bytes
-        std::vector<unsigned char> result;
-        // Try to parse as hex if it looks like hex
-        if (key.str.size() >= 2) {
-            result.reserve(key.str.size() / 2);
-            for (size_t i = 0; i < key.str.size(); i += 2) {
-                unsigned int byte;
-                if (sscanf(key.str.c_str() + i, "%02x", &byte) == 1) {
-                    result.push_back(static_cast<unsigned char>(byte));
-                } else {
-                    // Not hex, return placeholder
-                    if (ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT) {
-                        return std::vector<unsigned char>(32, 0);
-                    }
-                    return std::vector<unsigned char>(33, 0);
-                }
-            }
-            return result;
-        }
-        if (ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT) {
-            return std::vector<unsigned char>(32, 0);
-        }
-        return std::vector<unsigned char>(33, 0);
+        // Use the exact same mapping as StringKeyContext (ToScript) so that
+        // the key bytes the Rust satisfier is asked to sign for are the same
+        // bytes embedded in the script. (Replaces a lenient sscanf("%02x")
+        // loop that mis-parsed odd-length and mixed strings.)
+        return StringKeyToPKBytes(key.str, ms_ctx);
     }
 
     std::vector<unsigned char> ToPKHBytes(const StringKey& key) const {
-        return std::vector<unsigned char>(20, 0);
+        return StringKeyToPKHBytes(key.str, ms_ctx);
     }
 
     template<typename I>
     std::optional<StringKey> FromPKBytes(I first, I last) const {
-        return StringKey("decoded_key");
+        // Same identity-preserving labeling as StringKeyContext.
+        std::vector<unsigned char> bytes(first, last);
+        return StringKey(KeyBytesToHex(bytes));
     }
 
     template<typename I>
     std::optional<StringKey> FromPKHBytes(I first, I last) const {
-        return StringKey("decoded_pkh_key");
+        std::vector<unsigned char> bytes(first, last);
+        return StringKey(KeyBytesToHex(bytes));
     }
 
     // Sign callback
@@ -157,9 +208,12 @@ struct CallbackSatisfier {
                 sig.assign(sig_out, sig_out + sig_len);
                 free(sig_out);
             } else {
-                // Provide a dummy signature for size estimation
-                // DER signature: 71-73 bytes typically, use 72 as average
-                sig.resize(72, 0x30);
+                // Provide a dummy signature for size estimation. Use the
+                // context-appropriate maximum: 73 bytes for DER-encoded ECDSA
+                // (P2WSH), 65 bytes for Schnorr with sighash byte (Tapscript).
+                // Overestimating is safe for size estimation; underestimating
+                // is not.
+                sig.resize(ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT ? 65 : 73, 0x30);
                 if (sig_out) free(sig_out);
             }
             return miniscript::Availability::MAYBE;
@@ -324,6 +378,19 @@ static char* strdup_safe(const std::string& str) {
     return strdup_safe(str.c_str());
 }
 
+// Execute a C++ operation that must not let exceptions escape across the FFI
+// boundary: a C++ exception unwinding into Rust frames is undefined behavior.
+// These accessors only read cached values and are not expected to throw, but
+// the guard is cheap insurance against upstream changes.
+template <typename F>
+static bool ffi_noexcept_bool(F&& f) noexcept {
+    try {
+        return f();
+    } catch (...) {
+        return false;
+    }
+}
+
 extern "C" {
 
 MiniscriptResult miniscript_from_string(const char* input,
@@ -421,14 +488,14 @@ bool miniscript_is_valid(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.IsValid();
+    return ffi_noexcept_bool([&] { return node->node.IsValid(); });
 }
 
 bool miniscript_is_sane(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.IsSane();
+    return ffi_noexcept_bool([&] { return node->node.IsSane(); });
 }
 
 char* miniscript_get_type(const MiniscriptNode* node) {
@@ -468,26 +535,28 @@ bool miniscript_max_satisfaction_size(const MiniscriptNode* node, size_t* out_si
         return false;
     }
 
-    auto size = node->node.GetWitnessSize();
-    if (size) {
-        *out_size = *size;
-        return true;
-    }
-    return false;
+    return ffi_noexcept_bool([&] {
+        auto size = node->node.GetWitnessSize();
+        if (size) {
+            *out_size = *size;
+            return true;
+        }
+        return false;
+    });
 }
 
 bool miniscript_is_non_malleable(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.IsNonMalleable();
+    return ffi_noexcept_bool([&] { return node->node.IsNonMalleable(); });
 }
 
 bool miniscript_needs_signature(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.NeedsSignature();
+    return ffi_noexcept_bool([&] { return node->node.NeedsSignature(); });
 }
 
 bool miniscript_has_timelock_mix(const MiniscriptNode* node) {
@@ -496,79 +565,87 @@ bool miniscript_has_timelock_mix(const MiniscriptNode* node) {
     }
     // Timelock mix means the 'k' property is NOT set
     using namespace miniscript;
-    return !(node->node.GetType() << "k"_mst);
+    return ffi_noexcept_bool([&] { return !(node->node.GetType() << "k"_mst); });
 }
 
 bool miniscript_is_valid_top_level(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.IsValidTopLevel();
+    return ffi_noexcept_bool([&] { return node->node.IsValidTopLevel(); });
 }
 
 bool miniscript_check_ops_limit(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.CheckOpsLimit();
+    return ffi_noexcept_bool([&] { return node->node.CheckOpsLimit(); });
 }
 
 bool miniscript_check_stack_size(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.CheckStackSize();
+    return ffi_noexcept_bool([&] { return node->node.CheckStackSize(); });
 }
 
 bool miniscript_check_duplicate_key(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.CheckDuplicateKey();
+    return ffi_noexcept_bool([&] { return node->node.CheckDuplicateKey(); });
 }
 
 bool miniscript_get_ops(const MiniscriptNode* node, uint32_t* out_ops) {
     if (!node || !out_ops) {
         return false;
     }
-    auto ops = node->node.GetOps();
-    if (ops) {
-        *out_ops = *ops;
-        return true;
-    }
-    return false;
+    return ffi_noexcept_bool([&] {
+        auto ops = node->node.GetOps();
+        if (ops) {
+            *out_ops = *ops;
+            return true;
+        }
+        return false;
+    });
 }
 
 bool miniscript_get_stack_size(const MiniscriptNode* node, uint32_t* out_size) {
     if (!node || !out_size) {
         return false;
     }
-    auto size = node->node.GetStackSize();
-    if (size) {
-        *out_size = *size;
-        return true;
-    }
-    return false;
+    return ffi_noexcept_bool([&] {
+        auto size = node->node.GetStackSize();
+        if (size) {
+            *out_size = *size;
+            return true;
+        }
+        return false;
+    });
 }
 
 bool miniscript_get_exec_stack_size(const MiniscriptNode* node, uint32_t* out_size) {
     if (!node || !out_size) {
         return false;
     }
-    auto size = node->node.GetExecStackSize();
-    if (size) {
-        *out_size = *size;
-        return true;
-    }
-    return false;
+    return ffi_noexcept_bool([&] {
+        auto size = node->node.GetExecStackSize();
+        if (size) {
+            *out_size = *size;
+            return true;
+        }
+        return false;
+    });
 }
 
 bool miniscript_get_script_size(const MiniscriptNode* node, size_t* out_size) {
     if (!node || !out_size) {
         return false;
     }
-    *out_size = node->node.ScriptSize();
-    return true;
+    return ffi_noexcept_bool([&] {
+        *out_size = node->node.ScriptSize();
+        return true;
+    });
 }
 
 MiniscriptResult miniscript_from_script(const uint8_t* script, size_t script_len,
@@ -624,38 +701,21 @@ MiniscriptResult miniscript_from_script(const uint8_t* script, size_t script_len
     return result;
 }
 
-MiniscriptNode* miniscript_find_insane_sub(const MiniscriptNode* node) {
-    if (!node) {
-        return nullptr;
-    }
-
-    try {
-        auto insane_sub = node->node.FindInsaneSub();
-        if (!insane_sub) {
-            return nullptr;
-        }
-        // Clone the node for return - we need to create a new NodeRef
-        // Since FindInsaneSub returns a raw pointer, we can't move it
-        // We'll return nullptr for now as this is complex to implement safely
-        return nullptr;
-    } catch (...) {
-        return nullptr;
-    }
-}
-
 bool miniscript_valid_satisfactions(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.ValidSatisfactions();
+    return ffi_noexcept_bool([&] { return node->node.ValidSatisfactions(); });
 }
 
 bool miniscript_get_static_ops(const MiniscriptNode* node, uint32_t* out_ops) {
     if (!node || !out_ops) {
         return false;
     }
-    *out_ops = node->node.GetStaticOps();
-    return true;
+    return ffi_noexcept_bool([&] {
+        *out_ops = node->node.GetStaticOps();
+        return true;
+    });
 }
 
 SatisfactionResult miniscript_satisfy(
@@ -711,9 +771,23 @@ SatisfactionResult miniscript_satisfy(
                     result.stack[i] = nullptr;
                 } else {
                     result.stack[i] = static_cast<uint8_t*>(malloc(stack[i].size()));
-                    if (result.stack[i]) {
-                        memcpy(result.stack[i], stack[i].data(), stack[i].size());
+                    if (!result.stack[i]) {
+                        // Out of memory: free everything allocated so far and
+                        // fail cleanly. (Previously this left a null element
+                        // with a nonzero size, which the caller silently
+                        // translated into an empty - wrong - witness element.)
+                        for (size_t j = 0; j < i; ++j) {
+                            free(result.stack[j]); // free(nullptr) is a no-op
+                        }
+                        free(result.stack);
+                        free(result.stack_sizes);
+                        result.stack = nullptr;
+                        result.stack_sizes = nullptr;
+                        result.stack_count = 0;
+                        result.error_message = strdup_safe("Memory allocation failed");
+                        return result;
                     }
+                    memcpy(result.stack[i], stack[i].data(), stack[i].size());
                 }
             }
         }

@@ -62,6 +62,8 @@ bool descriptor_is_solvable(const DescriptorNode* node);
 
 /**
  * Convert descriptor back to string.
+ * Uses the network the descriptor was parsed with for key serialization
+ * (xpub vs tpub). Thread-safe.
  * Caller must free the returned string with descriptor_free_string().
  */
 char* descriptor_to_string(const DescriptorNode* node);
@@ -81,13 +83,14 @@ bool descriptor_expand(const DescriptorNode* node, int pos,
 
 /**
  * Get the address for a descriptor at a specific position.
+ * The address is encoded for the network the descriptor was parsed with.
+ * Thread-safe.
  *
  * @param node The descriptor
  * @param pos The derivation index
- * @param network The network (mainnet, testnet, etc.)
  * @return The address string, or NULL on error. Caller must free with descriptor_free_string().
  */
-char* descriptor_get_address(const DescriptorNode* node, int pos, DescriptorNetwork network);
+char* descriptor_get_address(const DescriptorNode* node, int pos);
 
 /**
  * Get all public keys from the descriptor at a specific position.
@@ -141,18 +144,6 @@ void descriptor_free_pubkeys(uint8_t** pubkeys, size_t* lens, size_t count);
  * Get the descriptor wrapper version.
  */
 const char* descriptor_version(void);
-
-/**
- * Select the chain parameters for key parsing.
- * Must be called before parsing descriptors with network-specific keys (xpub/tpub).
- *
- * @param network The network to use:
- *   - DESCRIPTOR_NETWORK_MAINNET (0): Use mainnet params (xpub/xprv)
- *   - DESCRIPTOR_NETWORK_TESTNET (1): Use testnet params (tpub/tprv)
- *   - DESCRIPTOR_NETWORK_SIGNET (2): Use signet params (same as testnet)
- *   - DESCRIPTOR_NETWORK_REGTEST (3): Use regtest params (tpub/tprv)
- */
-void descriptor_select_params(DescriptorNetwork network);
 
 #ifdef __cplusplus
 }

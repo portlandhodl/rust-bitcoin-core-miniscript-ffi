@@ -33,8 +33,9 @@ This crate provides direct access to Bitcoin Core's C++ miniscript parser, analy
 ### Descriptors
 - Parse all standard descriptor types: `pk()`, `pkh()`, `wpkh()`, `sh()`, `wsh()`, `tr()`
 - Full BIP32 extended key support (xpub/tpub derivation)
-- Multi-signature descriptors: `multi()`, `sortedmulti()`
+- Multi-signature descriptors: `multi()`, `sortedmulti()`; `musig()` for Taproot
 - Miniscript expressions within descriptors
+- Note: `combo()` descriptors are **rejected** — they produce multiple output variants (P2PK, P2PKH, P2WPKH, P2SH-P2WPKH) and this API models a single descriptor, so silently keeping only one variant would be wrong. Use the explicit single form you need (e.g. `wpkh(...)`) instead.
 - Address generation for all networks (mainnet, testnet, signet, regtest)
 - Public key extraction at any derivation index
 - Script expansion and size calculation
@@ -45,7 +46,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-bitcoin-core-miniscript-ffi = "0.3"
+bitcoin-core-miniscript-ffi = "0.6"
 ```
 
 ### Build Requirements
@@ -57,6 +58,22 @@ This crate requires:
 - **C++20 compatible compiler** (GCC 10+, Clang 10+, or MSVC 2019+)
 - **Boost 1.73+** (headers only)
 - **Bitcoin Core source code** (automatically included as a git submodule)
+
+If the vendored submodule is missing (e.g. when building the crate from
+crates.io, which excludes `vendor/`), the build downloads Bitcoin Core from
+GitHub and **verifies the checkout is exactly the pinned commit** matching
+`BITCOIN_CORE_VERSION` in `build.rs`. To opt out of network access at build
+time, enable the `vendored` feature and provide sources via the submodule or
+`BITCOIN_CORE_SRC`:
+
+```toml
+[dependencies]
+bitcoin-core-miniscript-ffi = { version = "0.5", features = ["vendored"] }
+```
+
+```bash
+export BITCOIN_CORE_SRC=/path/to/bitcoin/src  # required on crates.io builds
+```
 
 #### Linux (Debian/Ubuntu)
 
@@ -144,8 +161,20 @@ This crate provides safe Rust wrappers around unsafe FFI calls to Bitcoin Core's
 - **Memory Safety**: All C-allocated memory is properly freed via RAII (`Drop` impl)
 - **Null Safety**: All pointer dereferences are guarded by null checks
 - **Lifetime Safety**: Rust structs own their C++ objects and ensure proper lifetimes
-- **Thread Safety**: `Miniscript` and `Descriptor` implement `Send` and `Sync`
-- **No Undefined Behavior**: All unsafe blocks have documented invariants
+- **Thread Safety**: `Miniscript` implements `Send` + `Sync`; `Descriptor` implements `Send`. Network-dependent operations (`parse`, `get_address`, `to_string`) are serialized internally with a mutex over Bitcoin Core's global chain parameters.
+- **Panic containment**: panics in user-provided `Satisfier` callbacks are caught at the FFI boundary and reported as "not available" instead of aborting the process.
+
+> **Known limitation:** an internal consistency-check failure inside Bitcoin
+> Core (e.g. `CHECK_NONFATAL` with no recovery path, or a failed `assert`)
+> aborts the process — this is inherited from Bitcoin Core, which is designed
+> never to continue after detecting internal corruption. All assertion-enabled
+> code paths reachable from the public API are covered by the test suite.
+>
+> **Secret material:** private keys accepted through descriptors (WIF/xprv)
+> are held in `secure_allocator` memory that is cleansed before free, with
+> best-effort page locking (`mlock`/`VirtualLock`) to reduce swap exposure.
+> This library is intended for testing/cross-verification; prefer a
+> hardened wallet implementation for custody of production keys.
 
 ### FFI Design
 
@@ -315,13 +344,15 @@ impl Descriptor {
     /// Convert back to string
     pub fn to_string(&self) -> Option<String>;
 
-    /// Expand to script bytes at a specific index
+    /// Expand to script bytes at a specific index.
+    /// Indices >= 2^31 are rejected (return `None`); the C++ API is limited
+    /// to signed 32-bit positions.
     pub fn expand(&self, index: u32) -> Option<Vec<u8>>;
 
-    /// Get address at a specific index (uses stored network)
+    /// Get address at a specific index (uses stored network; index < 2^31)
     pub fn get_address(&self, index: u32) -> Option<String>;
 
-    /// Get all public keys at a specific index
+    /// Get all public keys at a specific index (index < 2^31)
     pub fn get_pubkeys(&self, index: u32) -> Option<Vec<Vec<u8>>>;
 
     /// Get script size
@@ -346,9 +377,12 @@ Script context for miniscript parsing.
 
 ```rust
 pub enum Context {
-    /// P2WSH context (SegWit v0) - 520 byte script limit
+    /// P2WSH context (SegWit v0) - 3,600 byte standardness script limit
+    /// (MAX_STANDARD_P2WSH_SCRIPT_SIZE); witness stack items limited to
+    /// 520 bytes by consensus
     Wsh,
-    /// Tapscript context (SegWit v1) - no script size limit, x-only pubkeys
+    /// Tapscript context (SegWit v1) - script size bounded by standard
+    /// transaction weight; x-only pubkeys
     Tapscript,
 }
 ```
@@ -460,7 +494,11 @@ fn analyze_tapscript(script: &str) {
 
 ## Thread Safety
 
-`Miniscript` and `Descriptor` implement `Send` and `Sync`, making them safe to use across threads:
+`Miniscript` implements `Send` and `Sync`, making it safe to share across threads.
+`Descriptor` implements `Send` (transfer between threads) but not `Sync`; parsing,
+`get_address()`, and `to_string()` internally serialize access to Bitcoin Core's
+global chain parameters with a mutex, so concurrent use of descriptors for
+different networks is safe:
 
 ```rust
 use miniscript_core_ffi::{Miniscript, Context};
