@@ -397,6 +397,11 @@ impl Descriptor {
     ///
     /// The script bytes on success, or `None` on failure.
     ///
+    /// Returns `None` for `index >= 2^31`: the C++ API takes a signed `int`,
+    /// and such indices would otherwise wrap to negative values, tripping a
+    /// Bitcoin Core assertion (`(nChild >> 31) == 0` in `CPubKey::Derive`)
+    /// and aborting the process.
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -411,18 +416,15 @@ impl Descriptor {
     /// }
     /// ```
     #[must_use]
-    #[allow(clippy::cast_possible_wrap)]
     pub fn expand(&self, index: u32) -> Option<Vec<u8>> {
+        // Indices >= 2^31 wrap to negative `int` in C++; reject them here.
+        let index = i32::try_from(index).ok()?;
+
         let mut script_ptr: *mut u8 = ptr::null_mut();
         let mut script_len: usize = 0;
 
         let success = unsafe {
-            ffi::descriptor_expand(
-                self.node,
-                index as i32,
-                &raw mut script_ptr,
-                &raw mut script_len,
-            )
+            ffi::descriptor_expand(self.node, index, &raw mut script_ptr, &raw mut script_len)
         };
 
         if success && !script_ptr.is_null() && script_len > 0 {
@@ -447,6 +449,9 @@ impl Descriptor {
     ///
     /// The address string on success, or `None` on failure.
     ///
+    /// Returns `None` for `index >= 2^31` (the C++ API takes a signed `int`;
+    /// see [`expand()`](Self::expand)).
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -460,10 +465,11 @@ impl Descriptor {
     /// // Returns something like "tb1q..."
     /// ```
     #[must_use]
-    #[allow(clippy::cast_possible_wrap)]
     pub fn get_address(&self, index: u32) -> Option<String> {
-        let ptr =
-            unsafe { ffi::descriptor_get_address(self.node, index as i32, self.network.to_ffi()) };
+        // Indices >= 2^31 wrap to negative `int` in C++; reject them here.
+        let index = i32::try_from(index).ok()?;
+
+        let ptr = unsafe { ffi::descriptor_get_address(self.node, index, self.network.to_ffi()) };
 
         if ptr.is_null() {
             return None;
@@ -489,6 +495,9 @@ impl Descriptor {
     ///
     /// A vector of public key bytes on success, or `None` on failure.
     ///
+    /// Returns `None` for `index >= 2^31` (the C++ API takes a signed `int`;
+    /// see [`expand()`](Self::expand)).
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -503,8 +512,10 @@ impl Descriptor {
     /// }
     /// ```
     #[must_use]
-    #[allow(clippy::cast_possible_wrap)]
     pub fn get_pubkeys(&self, index: u32) -> Option<Vec<Vec<u8>>> {
+        // Indices >= 2^31 wrap to negative `int` in C++; reject them here.
+        let index = i32::try_from(index).ok()?;
+
         let mut pubkeys_ptr: *mut *mut u8 = ptr::null_mut();
         let mut lens_ptr: *mut usize = ptr::null_mut();
         let mut count: usize = 0;
@@ -512,7 +523,7 @@ impl Descriptor {
         let success = unsafe {
             ffi::descriptor_get_pubkeys(
                 self.node,
-                index as i32,
+                index,
                 &raw mut pubkeys_ptr,
                 &raw mut lens_ptr,
                 &raw mut count,

@@ -331,3 +331,33 @@ fn test_non_ranged_descriptor_ignores_index() {
         "Non-ranged descriptor should produce same script"
     );
 }
+
+#[test]
+fn test_huge_index_returns_none_instead_of_aborting() {
+    // Regression test: indices >= 2^31 previously wrapped to a negative
+    // `int` in C++, tripping `assert((nChild >> 31) == 0)` in
+    // CPubKey::Derive and aborting the whole process.
+    let desc_str = "wpkh(xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/1/2/*)";
+    let desc = check_parse_success(desc_str);
+
+    assert!(desc.expand(u32::MAX).is_none());
+    assert!(desc.expand(1u32 << 31).is_none());
+    assert!(desc.get_address(u32::MAX).is_none());
+    assert!(desc.get_pubkeys(u32::MAX).is_none());
+
+    // The largest representable index must still work.
+    assert!(desc.expand((1u32 << 31) - 1).is_some());
+    assert!(desc.get_address((1u32 << 31) - 1).is_some());
+    assert!(desc.get_pubkeys((1u32 << 31) - 1).is_some());
+}
+
+#[test]
+fn test_huge_index_non_ranged_descriptor() {
+    // Non-ranged descriptors ignore the index, but the guard must apply
+    // uniformly (and must not crash).
+    let desc_str = "wpkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)";
+    let desc = check_parse_success(desc_str);
+
+    assert!(desc.expand(u32::MAX).is_none());
+    assert!(desc.expand(0).is_some());
+}
