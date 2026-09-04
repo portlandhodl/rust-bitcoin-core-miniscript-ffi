@@ -153,3 +153,95 @@ fn test_pkh_script_hash_matches_witness_pubkey() {
     assert_eq!(res.stack.len(), 2);
     assert_eq!(&res.stack[1], &key_bytes);
 }
+
+// ---------------------------------------------------------------------------
+// Key identity for scripts decoded with from_script_bytes
+//
+// Previously FromPKBytes/FromPKHBytes labeled every decoded key with the
+// constants "decoded_key"/"decoded_pkh_key": distinct keys collapsed onto one
+// identity, corrupting to_string, re-serialization (to_script_bytes did not
+// round-trip), duplicate-key analysis, and satisfier lookups.
+// ---------------------------------------------------------------------------
+
+const KEY_A33: &str = "02abababababababababababababababababababababababababababababababab";
+const KEY_B33: &str = "03cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+
+#[test]
+fn test_from_script_bytes_preserves_key_identity() {
+    let original = Miniscript::from_str(&format!("pk({KEY_A33})"), Context::Wsh)
+        .unwrap()
+        .to_script_bytes()
+        .unwrap();
+
+    let decoded = Miniscript::from_script_bytes(&original, Context::Wsh).expect("decode");
+
+    // Exact round-trip: the re-serialized script is byte-identical.
+    assert_eq!(
+        decoded.to_script_bytes().unwrap(),
+        original,
+        "from_script_bytes -> to_script_bytes must round-trip exactly"
+    );
+
+    // to_string shows the real key, not a constant placeholder label.
+    let s = decoded.to_string().unwrap();
+    assert_eq!(s, format!("pk({KEY_A33})"));
+}
+
+#[test]
+fn test_from_script_bytes_distinct_keys_not_aliased() {
+    // A 2-of-2 multisig with DISTINCT keys must be sane after decoding.
+    let ms = Miniscript::from_str(&format!("multi(2,{KEY_A33},{KEY_B33})"), Context::Wsh).unwrap();
+    let script = ms.to_script_bytes().unwrap();
+    let decoded = Miniscript::from_script_bytes(&script, Context::Wsh).expect("decode");
+
+    assert!(
+        decoded.check_duplicate_key(),
+        "distinct keys were aliased into a false duplicate"
+    );
+    assert!(decoded.is_sane(), "decoded 2-of-2 multi must be sane");
+
+    // Both real keys are visible in the string form.
+    let s = decoded.to_string().unwrap();
+    assert!(s.contains(KEY_A33) && s.contains(KEY_B33), "decoded: {s}");
+
+    // Exact re-serialization.
+    assert_eq!(decoded.to_script_bytes().unwrap(), script);
+}
+
+#[test]
+fn test_from_script_bytes_detects_real_duplicate() {
+    // The same key twice is a genuine duplicate and must still be caught
+    // (i.e. the labeling must not over-distinct either).
+    let ms = Miniscript::from_str(&format!("multi(2,{KEY_A33},{KEY_A33})"), Context::Wsh).unwrap();
+    assert!(!ms.check_duplicate_key());
+
+    let script = ms.to_script_bytes().unwrap();
+    let decoded = Miniscript::from_script_bytes(&script, Context::Wsh).expect("decode");
+    assert!(
+        !decoded.check_duplicate_key(),
+        "genuine duplicate key not detected after decoding"
+    );
+    assert!(!decoded.is_sane());
+}
+
+#[test]
+fn test_from_script_bytes_pkh_hash_round_trip() {
+    // pkh scripts embed only Hash160(pubkey). Decoded keys are labeled with
+    // the hash hex (40 chars), and re-serialization must be byte-exact.
+    let ms = Miniscript::from_str(&format!("pkh({KEY_A33})"), Context::Wsh).unwrap();
+    let script = ms.to_script_bytes().unwrap();
+
+    let decoded = Miniscript::from_script_bytes(&script, Context::Wsh).expect("decode");
+    assert_eq!(
+        decoded.to_script_bytes().unwrap(),
+        script,
+        "pkh script must round-trip exactly through the hash label"
+    );
+
+    // The string form carries the embedded hash (as in Bitcoin Core's own
+    // display of decoded pkh miniscripts).
+    let s = decoded.to_string().unwrap();
+    assert!(s.starts_with("pkh("), "got {s}");
+    let inner = s.trim_start_matches("pkh(").trim_end_matches(')');
+    assert_eq!(inner.len(), 40, "expected 40-char hash label, got {s}");
+}

@@ -1386,7 +1386,10 @@ impl Miniscript {
     /// - any other name maps to a zero-filled placeholder of the context's key
     ///   size (33 bytes for [`Context::Wsh`], 32 bytes for [`Context::Tapscript`]);
     /// - `pk_h()` embeds the HASH160 of the key bytes, so scripts and witnesses
-    ///   correspond.
+    ///   correspond, except for a 40-hex-character (20-byte) label, which
+    ///   carries a literal key hash — this is how hashes decoded from raw
+    ///   scripts by [`from_script_bytes()`](Self::from_script_bytes) are
+    ///   represented, keeping decode → re-serialize round-trips byte-exact.
     #[must_use]
     pub fn to_script_bytes(&self) -> Option<Vec<u8>> {
         let mut script_ptr: *mut u8 = ptr::null_mut();
@@ -1415,6 +1418,13 @@ impl Miniscript {
     }
 
     /// Parse a miniscript from raw script bytes.
+    ///
+    /// Keys and key hashes embedded in the script keep their identity: they are
+    /// labeled with their own hex encoding, so [`to_string()`](Self::to_string)
+    /// shows the real bytes, duplicate-key analysis works on the actual keys,
+    /// and re-serializing with [`to_script_bytes()`](Self::to_script_bytes)
+    /// round-trips byte-exactly. (`pkh` hashes decode to their 40-character
+    /// hex hash label, matching Bitcoin Core's own display.)
     ///
     /// # Errors
     ///

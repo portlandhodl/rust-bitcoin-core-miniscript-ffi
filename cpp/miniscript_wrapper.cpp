@@ -43,12 +43,36 @@ static std::vector<unsigned char> StringKeyToPKBytes(const std::string& str,
         ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT ? 32 : 33, 0);
 }
 
+// Hex-encode key bytes for use as a StringKey label. Used when decoding raw
+// scripts (FromScript) so that decoded keys/hashes keep their identity
+// instead of all collapsing onto a constant label: the label round-trips
+// through StringKeyToPKBytes to exactly the original bytes.
+static std::string KeyBytesToHex(std::span<const unsigned char> bytes) {
+    static const char* digits = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (unsigned char b : bytes) {
+        out.push_back(digits[b >> 4]);
+        out.push_back(digits[b & 0x0f]);
+    }
+    return out;
+}
+
 // The pk_h() fragment requires the script's embedded hash to equal the
 // HASH160 of the pubkey bytes pushed by the witness (see the PK_H handling
 // in miniscript.h), so derive one from the other instead of returning an
 // unrelated zero placeholder.
 static std::vector<unsigned char> StringKeyToPKHBytes(const std::string& str,
                                                       miniscript::MiniscriptContext ms_ctx) {
+    // A 40-character hex label carries a literal 20-byte key hash. This is how
+    // FromPKHBytes labels hashes decoded from raw scripts (matching how
+    // Bitcoin Core displays decoded pkh keys), which keeps
+    // from_script_bytes -> to_script_bytes round-trips exact for pkh nodes.
+    if (str.size() == 40) {
+        if (auto bytes = TryParseHex<unsigned char>(str)) {
+            return std::move(*bytes);
+        }
+    }
     const std::vector<unsigned char> pk = StringKeyToPKBytes(str, ms_ctx);
     const uint160 h = Hash160(pk);
     return std::vector<unsigned char>(h.begin(), h.end());
@@ -86,12 +110,21 @@ struct StringKeyContext {
 
     template<typename I>
     std::optional<StringKey> FromPKBytes(I first, I last) const {
-        return StringKey("decoded_key");
+        // Preserve key identity: label the key with its own hex bytes, which
+        // StringKeyToPKBytes maps back to exactly these bytes. (Previously a
+        // constant "decoded_key" label collapsed every key in a decoded
+        // script onto one identity, corrupting to_string, re-serialization,
+        // duplicate-key analysis, and satisfier lookups.)
+        std::vector<unsigned char> bytes(first, last);
+        return StringKey(KeyBytesToHex(bytes));
     }
 
     template<typename I>
     std::optional<StringKey> FromPKHBytes(I first, I last) const {
-        return StringKey("decoded_pkh_key");
+        // Label key hashes with their own hex (40 chars), which
+        // StringKeyToPKHBytes recognizes as a literal hash.
+        std::vector<unsigned char> bytes(first, last);
+        return StringKey(KeyBytesToHex(bytes));
     }
 };
 
@@ -134,12 +167,15 @@ struct CallbackSatisfier {
 
     template<typename I>
     std::optional<StringKey> FromPKBytes(I first, I last) const {
-        return StringKey("decoded_key");
+        // Same identity-preserving labeling as StringKeyContext.
+        std::vector<unsigned char> bytes(first, last);
+        return StringKey(KeyBytesToHex(bytes));
     }
 
     template<typename I>
     std::optional<StringKey> FromPKHBytes(I first, I last) const {
-        return StringKey("decoded_pkh_key");
+        std::vector<unsigned char> bytes(first, last);
+        return StringKey(KeyBytesToHex(bytes));
     }
 
     // Sign callback
