@@ -75,6 +75,18 @@ void memory_cleanse(void* ptr, size_t len) {
 // Include the actual header to get the right class definition
 #include <support/lockedpool.h>
 
+#include <mutex>
+#include <unordered_map>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#endif
+
 // Minimal LockedPageAllocator stub
 class StubLockedPageAllocator : public LockedPageAllocator {
 public:
@@ -83,13 +95,23 @@ public:
         return malloc(len);
     }
     void FreeLocked(void* addr, size_t len) override {
-        (void)len;
+        if (addr && len) {
+            memory_cleanse(addr, len);
+        }
         ::free(addr);
     }
     size_t GetLimit() override {
         return 0;
     }
 };
+
+namespace {
+// Track allocation sizes so that LockedPool::free() (which receives no size)
+// can securely cleanse and unlock the memory. Bitcoin Core's real LockedPool
+// keeps arena bookkeeping for this; the stub needs an equivalent side table.
+std::mutex g_locked_pool_mutex;
+std::unordered_map<void*, size_t> g_locked_pool_sizes;
+} // namespace
 
 // Provide implementations for the LockedPool and LockedPoolManager classes
 LockedPool::LockedPool(std::unique_ptr<LockedPageAllocator> alloc, LockingFailed_Callback cb)
@@ -100,10 +122,43 @@ LockedPool::~LockedPool() {
 }
 
 void* LockedPool::alloc(size_t size) {
-    return malloc(size);
+    void* ptr = malloc(size);
+    if (ptr && size) {
+        // Best-effort page locking to keep secret material (e.g. CKey via
+        // secure_allocator) out of swap. Failure is acceptable and matches
+        // Bitcoin Core's own behavior when the OS cannot lock pages.
+#if defined(_WIN32)
+        (void)VirtualLock(ptr, size);
+#else
+        (void)mlock(ptr, size);
+#endif
+        std::lock_guard<std::mutex> lock(g_locked_pool_mutex);
+        g_locked_pool_sizes.emplace(ptr, size);
+    }
+    return ptr;
 }
 
 void LockedPool::free(void* ptr) {
+    if (!ptr) return;
+    size_t size = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_locked_pool_mutex);
+        if (auto it = g_locked_pool_sizes.find(ptr); it != g_locked_pool_sizes.end()) {
+            size = it->second;
+            g_locked_pool_sizes.erase(it);
+        }
+    }
+    if (size) {
+        // Defense in depth: secure_allocator::deallocate already cleanses
+        // before calling us, but cleanse here too so that every pool free
+        // path erases secret material, then release any page lock.
+        memory_cleanse(ptr, size);
+#if defined(_WIN32)
+        (void)VirtualUnlock(ptr, size);
+#else
+        (void)munlock(ptr, size);
+#endif
+    }
     ::free(ptr);
 }
 

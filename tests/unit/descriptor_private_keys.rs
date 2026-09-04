@@ -104,3 +104,26 @@ fn test_xprv_hardened_derivation_matches_rust_bitcoin() {
 
     assert_eq!(script, expected.into_bytes());
 }
+
+#[test]
+fn test_private_key_material_alloc_free_stress() {
+    // Exercises the LockedPool stub's allocation bookkeeping and
+    // cleanse-on-free path (secure_allocator -> LockedPoolManager)
+    // repeatedly, including from multiple threads: WIF parsing materializes a
+    // CKey (secure_allocator) which is freed when the descriptor is dropped.
+    let mut handles = Vec::new();
+    for _ in 0..4 {
+        handles.push(std::thread::spawn(|| {
+            for _ in 0..200 {
+                let desc = Descriptor::for_network(Network::Mainnet)
+                    .parse(&format!("pkh({WIF_ONE})"))
+                    .unwrap();
+                assert_eq!(desc.get_address(0).unwrap(), ADDR_ONE);
+                drop(desc);
+            }
+        }));
+    }
+    for h in handles {
+        h.join().unwrap();
+    }
+}

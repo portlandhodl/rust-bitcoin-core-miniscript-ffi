@@ -169,6 +169,12 @@ This crate provides safe Rust wrappers around unsafe FFI calls to Bitcoin Core's
 > aborts the process — this is inherited from Bitcoin Core, which is designed
 > never to continue after detecting internal corruption. All assertion-enabled
 > code paths reachable from the public API are covered by the test suite.
+>
+> **Secret material:** private keys accepted through descriptors (WIF/xprv)
+> are held in `secure_allocator` memory that is cleansed before free, with
+> best-effort page locking (`mlock`/`VirtualLock`) to reduce swap exposure.
+> This library is intended for testing/cross-verification; prefer a
+> hardened wallet implementation for custody of production keys.
 
 ### FFI Design
 
