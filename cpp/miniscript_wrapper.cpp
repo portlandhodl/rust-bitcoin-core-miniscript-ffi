@@ -7,6 +7,9 @@
 
 #include <script/miniscript.h>
 #include <script/script.h>
+#include <hash.h>
+#include <uint256.h>
+#include <util/strencodings.h>
 
 static const char* VERSION_STRING = "0.3.0";
 
@@ -17,6 +20,39 @@ struct StringKey {
     StringKey(const std::string& s) : str(s) {}
     StringKey(std::string&& s) : str(std::move(s)) {}
 };
+
+// Convert a symbolic string key to its byte representation.
+//
+// String keys mirror Bitcoin Core's own miniscript test DSL, where keys are
+// identifiers like "Alice". This mapping MUST be identical for script
+// conversion (ToScript) and satisfaction (Satisfy), otherwise the produced
+// scripts and witnesses do not correspond (previously ToScript always
+// embedded zero-filled placeholders while Satisfy hex-parsed the string).
+//
+//   - even-length hex strings map to the raw bytes ("deadbeef" -> 4 bytes);
+//   - anything else maps to a zero-filled placeholder of the context's key
+//     size (33 bytes for P2WSH, 32 bytes for Tapscript).
+static std::vector<unsigned char> StringKeyToPKBytes(const std::string& str,
+                                                     miniscript::MiniscriptContext ms_ctx) {
+    if (!str.empty() && str.size() % 2 == 0) {
+        if (auto bytes = TryParseHex<unsigned char>(str)) {
+            return std::move(*bytes);
+        }
+    }
+    return std::vector<unsigned char>(
+        ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT ? 32 : 33, 0);
+}
+
+// The pk_h() fragment requires the script's embedded hash to equal the
+// HASH160 of the pubkey bytes pushed by the witness (see the PK_H handling
+// in miniscript.h), so derive one from the other instead of returning an
+// unrelated zero placeholder.
+static std::vector<unsigned char> StringKeyToPKHBytes(const std::string& str,
+                                                      miniscript::MiniscriptContext ms_ctx) {
+    const std::vector<unsigned char> pk = StringKeyToPKBytes(str, ms_ctx);
+    const uint160 h = Hash160(pk);
+    return std::vector<unsigned char>(h.begin(), h.end());
+}
 
 struct StringKeyContext {
     using Key = StringKey;
@@ -41,14 +77,11 @@ struct StringKeyContext {
     }
 
     std::vector<unsigned char> ToPKBytes(const StringKey& key) const {
-        if (ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT) {
-            return std::vector<unsigned char>(32, 0);
-        }
-        return std::vector<unsigned char>(33, 0);
+        return StringKeyToPKBytes(key.str, ms_ctx);
     }
 
     std::vector<unsigned char> ToPKHBytes(const StringKey& key) const {
-        return std::vector<unsigned char>(20, 0);
+        return StringKeyToPKHBytes(key.str, ms_ctx);
     }
 
     template<typename I>
@@ -88,33 +121,15 @@ struct CallbackSatisfier {
     }
 
     std::vector<unsigned char> ToPKBytes(const StringKey& key) const {
-        // Convert key string to bytes - for string keys, we use the string bytes
-        std::vector<unsigned char> result;
-        // Try to parse as hex if it looks like hex
-        if (key.str.size() >= 2) {
-            result.reserve(key.str.size() / 2);
-            for (size_t i = 0; i < key.str.size(); i += 2) {
-                unsigned int byte;
-                if (sscanf(key.str.c_str() + i, "%02x", &byte) == 1) {
-                    result.push_back(static_cast<unsigned char>(byte));
-                } else {
-                    // Not hex, return placeholder
-                    if (ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT) {
-                        return std::vector<unsigned char>(32, 0);
-                    }
-                    return std::vector<unsigned char>(33, 0);
-                }
-            }
-            return result;
-        }
-        if (ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT) {
-            return std::vector<unsigned char>(32, 0);
-        }
-        return std::vector<unsigned char>(33, 0);
+        // Use the exact same mapping as StringKeyContext (ToScript) so that
+        // the key bytes the Rust satisfier is asked to sign for are the same
+        // bytes embedded in the script. (Replaces a lenient sscanf("%02x")
+        // loop that mis-parsed odd-length and mixed strings.)
+        return StringKeyToPKBytes(key.str, ms_ctx);
     }
 
     std::vector<unsigned char> ToPKHBytes(const StringKey& key) const {
-        return std::vector<unsigned char>(20, 0);
+        return StringKeyToPKHBytes(key.str, ms_ctx);
     }
 
     template<typename I>
