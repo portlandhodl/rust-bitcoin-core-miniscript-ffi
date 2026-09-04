@@ -9,6 +9,7 @@ pub mod descriptor_bip32;
 pub mod descriptor_complex;
 pub mod descriptor_decode_test;
 pub mod descriptor_parsing;
+pub mod descriptor_private_keys;
 pub mod descriptor_timelocks;
 pub mod descriptor_validation;
 pub mod descriptor_wrappers;

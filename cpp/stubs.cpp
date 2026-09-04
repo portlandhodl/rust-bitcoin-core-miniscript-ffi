@@ -124,6 +124,94 @@ LockedPoolManager& LockedPoolManager::Instance() {
 }
 
 // =============================================================================
+// Randomness - GetRandBytes
+// =============================================================================
+//
+// Bitcoin Core's random.cpp is not part of the compiled source set, but
+// ECC_Start() (invoked via the global ECC_Context below) needs GetRandBytes()
+// to randomize the secp256k1 signing context. Provide a minimal,
+// cryptographically secure implementation backed directly by the OS RNG.
+// The function is declared noexcept; RNG failure is unrecoverable here, so we
+// abort rather than risk returning predictable bytes.
+#include <random.h>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <bcrypt.h>
+#include <algorithm>
+#pragma comment(lib, "bcrypt.lib")
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#include <stdlib.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/random.h>
+#include <unistd.h>
+#endif
+
+void GetRandBytes(std::span<unsigned char> bytes) noexcept
+{
+    if (bytes.empty()) return;
+#if defined(_WIN32)
+    size_t off = 0;
+    while (off < bytes.size()) {
+        ULONG chunk = static_cast<ULONG>(std::min<size_t>(bytes.size() - off, 0xFFFFFFFFu));
+        if (BCryptGenRandom(nullptr, bytes.data() + off, chunk,
+                            BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+            std::abort();
+        }
+        off += chunk;
+    }
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+    arc4random_buf(bytes.data(), bytes.size());
+#else
+    size_t off = 0;
+    while (off < bytes.size()) {
+        ssize_t ret = getrandom(bytes.data() + off, bytes.size() - off, 0);
+        if (ret < 0) {
+            if (errno == EINTR) continue;
+            if (errno == ENOSYS) break; // Kernel without getrandom: use /dev/urandom below.
+            std::abort();
+        }
+        off += static_cast<size_t>(ret);
+    }
+    if (off < bytes.size()) {
+        int fd = open("/dev/urandom", O_RDONLY);
+        if (fd < 0) std::abort();
+        while (off < bytes.size()) {
+            ssize_t ret = read(fd, bytes.data() + off, bytes.size() - off);
+            if (ret < 0) {
+                if (errno == EINTR) continue;
+                close(fd);
+                std::abort();
+            }
+            off += static_cast<size_t>(ret);
+        }
+        close(fd);
+    }
+#endif
+}
+
+// =============================================================================
+// secp256k1 signing-context initialization
+// =============================================================================
+//
+// CKey operations (GetPubKey, Derive over unhardened steps, Sign, ...) use
+// Bitcoin Core's global signing context `secp256k1_context_sign`, which is
+// only initialized by ECC_Start(). Bitcoin Core binaries create an
+// ECC_Context during startup; this library never did, so any FFI-reachable
+// path using the signing context dereferenced a null context and crashed the
+// process (e.g. parsing a descriptor containing a WIF private key calls
+// CKey::GetPubKey()). Create a process-lifetime ECC_Context here, mirroring
+// Bitcoin Core's own startup behavior.
+#include <key.h>
+
+static ECC_Context g_ecc_context;
+
+// =============================================================================
 // Chain Parameters - Multi-Network Support
 // =============================================================================
 //
