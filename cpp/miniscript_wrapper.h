@@ -109,9 +109,6 @@ MiniscriptResult miniscript_from_script(const uint8_t *script, size_t script_len
                                         MiniscriptContext ctx,
                                         MiniscriptNode **out_node);
 
-// Find the first insane sub-expression (returns null if none found or if node is sane)
-MiniscriptNode* miniscript_find_insane_sub(const MiniscriptNode *node);
-
 // Check if the miniscript has valid satisfactions
 bool miniscript_valid_satisfactions(const MiniscriptNode *node);
 

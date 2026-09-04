@@ -172,9 +172,12 @@ struct CallbackSatisfier {
                 sig.assign(sig_out, sig_out + sig_len);
                 free(sig_out);
             } else {
-                // Provide a dummy signature for size estimation
-                // DER signature: 71-73 bytes typically, use 72 as average
-                sig.resize(72, 0x30);
+                // Provide a dummy signature for size estimation. Use the
+                // context-appropriate maximum: 73 bytes for DER-encoded ECDSA
+                // (P2WSH), 65 bytes for Schnorr with sighash byte (Tapscript).
+                // Overestimating is safe for size estimation; underestimating
+                // is not.
+                sig.resize(ms_ctx == miniscript::MiniscriptContext::TAPSCRIPT ? 65 : 73, 0x30);
                 if (sig_out) free(sig_out);
             }
             return miniscript::Availability::MAYBE;
@@ -339,6 +342,19 @@ static char* strdup_safe(const std::string& str) {
     return strdup_safe(str.c_str());
 }
 
+// Execute a C++ operation that must not let exceptions escape across the FFI
+// boundary: a C++ exception unwinding into Rust frames is undefined behavior.
+// These accessors only read cached values and are not expected to throw, but
+// the guard is cheap insurance against upstream changes.
+template <typename F>
+static bool ffi_noexcept_bool(F&& f) noexcept {
+    try {
+        return f();
+    } catch (...) {
+        return false;
+    }
+}
+
 extern "C" {
 
 MiniscriptResult miniscript_from_string(const char* input,
@@ -436,14 +452,14 @@ bool miniscript_is_valid(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.IsValid();
+    return ffi_noexcept_bool([&] { return node->node.IsValid(); });
 }
 
 bool miniscript_is_sane(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.IsSane();
+    return ffi_noexcept_bool([&] { return node->node.IsSane(); });
 }
 
 char* miniscript_get_type(const MiniscriptNode* node) {
@@ -483,26 +499,28 @@ bool miniscript_max_satisfaction_size(const MiniscriptNode* node, size_t* out_si
         return false;
     }
 
-    auto size = node->node.GetWitnessSize();
-    if (size) {
-        *out_size = *size;
-        return true;
-    }
-    return false;
+    return ffi_noexcept_bool([&] {
+        auto size = node->node.GetWitnessSize();
+        if (size) {
+            *out_size = *size;
+            return true;
+        }
+        return false;
+    });
 }
 
 bool miniscript_is_non_malleable(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.IsNonMalleable();
+    return ffi_noexcept_bool([&] { return node->node.IsNonMalleable(); });
 }
 
 bool miniscript_needs_signature(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.NeedsSignature();
+    return ffi_noexcept_bool([&] { return node->node.NeedsSignature(); });
 }
 
 bool miniscript_has_timelock_mix(const MiniscriptNode* node) {
@@ -511,79 +529,87 @@ bool miniscript_has_timelock_mix(const MiniscriptNode* node) {
     }
     // Timelock mix means the 'k' property is NOT set
     using namespace miniscript;
-    return !(node->node.GetType() << "k"_mst);
+    return ffi_noexcept_bool([&] { return !(node->node.GetType() << "k"_mst); });
 }
 
 bool miniscript_is_valid_top_level(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.IsValidTopLevel();
+    return ffi_noexcept_bool([&] { return node->node.IsValidTopLevel(); });
 }
 
 bool miniscript_check_ops_limit(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.CheckOpsLimit();
+    return ffi_noexcept_bool([&] { return node->node.CheckOpsLimit(); });
 }
 
 bool miniscript_check_stack_size(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.CheckStackSize();
+    return ffi_noexcept_bool([&] { return node->node.CheckStackSize(); });
 }
 
 bool miniscript_check_duplicate_key(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.CheckDuplicateKey();
+    return ffi_noexcept_bool([&] { return node->node.CheckDuplicateKey(); });
 }
 
 bool miniscript_get_ops(const MiniscriptNode* node, uint32_t* out_ops) {
     if (!node || !out_ops) {
         return false;
     }
-    auto ops = node->node.GetOps();
-    if (ops) {
-        *out_ops = *ops;
-        return true;
-    }
-    return false;
+    return ffi_noexcept_bool([&] {
+        auto ops = node->node.GetOps();
+        if (ops) {
+            *out_ops = *ops;
+            return true;
+        }
+        return false;
+    });
 }
 
 bool miniscript_get_stack_size(const MiniscriptNode* node, uint32_t* out_size) {
     if (!node || !out_size) {
         return false;
     }
-    auto size = node->node.GetStackSize();
-    if (size) {
-        *out_size = *size;
-        return true;
-    }
-    return false;
+    return ffi_noexcept_bool([&] {
+        auto size = node->node.GetStackSize();
+        if (size) {
+            *out_size = *size;
+            return true;
+        }
+        return false;
+    });
 }
 
 bool miniscript_get_exec_stack_size(const MiniscriptNode* node, uint32_t* out_size) {
     if (!node || !out_size) {
         return false;
     }
-    auto size = node->node.GetExecStackSize();
-    if (size) {
-        *out_size = *size;
-        return true;
-    }
-    return false;
+    return ffi_noexcept_bool([&] {
+        auto size = node->node.GetExecStackSize();
+        if (size) {
+            *out_size = *size;
+            return true;
+        }
+        return false;
+    });
 }
 
 bool miniscript_get_script_size(const MiniscriptNode* node, size_t* out_size) {
     if (!node || !out_size) {
         return false;
     }
-    *out_size = node->node.ScriptSize();
-    return true;
+    return ffi_noexcept_bool([&] {
+        *out_size = node->node.ScriptSize();
+        return true;
+    });
 }
 
 MiniscriptResult miniscript_from_script(const uint8_t* script, size_t script_len,
@@ -639,38 +665,21 @@ MiniscriptResult miniscript_from_script(const uint8_t* script, size_t script_len
     return result;
 }
 
-MiniscriptNode* miniscript_find_insane_sub(const MiniscriptNode* node) {
-    if (!node) {
-        return nullptr;
-    }
-
-    try {
-        auto insane_sub = node->node.FindInsaneSub();
-        if (!insane_sub) {
-            return nullptr;
-        }
-        // Clone the node for return - we need to create a new NodeRef
-        // Since FindInsaneSub returns a raw pointer, we can't move it
-        // We'll return nullptr for now as this is complex to implement safely
-        return nullptr;
-    } catch (...) {
-        return nullptr;
-    }
-}
-
 bool miniscript_valid_satisfactions(const MiniscriptNode* node) {
     if (!node) {
         return false;
     }
-    return node->node.ValidSatisfactions();
+    return ffi_noexcept_bool([&] { return node->node.ValidSatisfactions(); });
 }
 
 bool miniscript_get_static_ops(const MiniscriptNode* node, uint32_t* out_ops) {
     if (!node || !out_ops) {
         return false;
     }
-    *out_ops = node->node.GetStaticOps();
-    return true;
+    return ffi_noexcept_bool([&] {
+        *out_ops = node->node.GetStaticOps();
+        return true;
+    });
 }
 
 SatisfactionResult miniscript_satisfy(
@@ -726,9 +735,23 @@ SatisfactionResult miniscript_satisfy(
                     result.stack[i] = nullptr;
                 } else {
                     result.stack[i] = static_cast<uint8_t*>(malloc(stack[i].size()));
-                    if (result.stack[i]) {
-                        memcpy(result.stack[i], stack[i].data(), stack[i].size());
+                    if (!result.stack[i]) {
+                        // Out of memory: free everything allocated so far and
+                        // fail cleanly. (Previously this left a null element
+                        // with a nonzero size, which the caller silently
+                        // translated into an empty - wrong - witness element.)
+                        for (size_t j = 0; j < i; ++j) {
+                            free(result.stack[j]); // free(nullptr) is a no-op
+                        }
+                        free(result.stack);
+                        free(result.stack_sizes);
+                        result.stack = nullptr;
+                        result.stack_sizes = nullptr;
+                        result.stack_count = 0;
+                        result.error_message = strdup_safe("Memory allocation failed");
+                        return result;
                     }
+                    memcpy(result.stack[i], stack[i].data(), stack[i].size());
                 }
             }
         }

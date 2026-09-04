@@ -277,7 +277,10 @@ pub struct Descriptor {
     network: Network,
 }
 
-// Safety: DescriptorNode is only accessed through FFI calls which are thread-safe
+// Safety: DescriptorNode owns its C++ object, is not aliased, and all FFI calls
+// that touch network-dependent global chain parameters hold the params mutex.
+// Sync is intentionally not implemented: concurrent &self calls would be safe
+// memory-wise, but we keep the API conservative.
 unsafe impl Send for Descriptor {}
 
 impl Descriptor {

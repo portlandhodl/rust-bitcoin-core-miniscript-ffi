@@ -131,8 +131,10 @@
 //!     .expect("valid miniscript");
 //!
 //! let mut satisfier = SimpleSatisfier::new();
-//! // Add signature for key A
-//! satisfier.signatures.insert(b"A".to_vec(), vec![0x30, 0x44, /* ... */]);
+//! // Add a signature for the symbolic key "A". Non-hex key names map to a
+//! // zero-filled placeholder (33 bytes in WSH context); even-length hex names
+//! // map to the raw bytes. See `Miniscript::to_script_bytes`.
+//! satisfier.signatures.insert(vec![0u8; 33], vec![0x30, 0x44, /* ... */]);
 //!
 //! let result = ms.satisfy(satisfier, true).expect("satisfaction");
 //! println!("Witness stack has {} elements", result.stack.len());
@@ -1513,7 +1515,18 @@ impl Miniscript {
                 let elem_ptr = unsafe { *result.stack.add(i) };
                 let elem_len = unsafe { *result.stack_sizes.add(i) };
 
-                if elem_ptr.is_null() || elem_len == 0 {
+                if elem_ptr.is_null() {
+                    // A null pointer is the encoding of an empty stack
+                    // element; a nonzero length alongside it means the C++
+                    // side is corrupt (e.g. partial allocation failure) and
+                    // must not be silently turned into a wrong witness.
+                    if elem_len != 0 {
+                        unsafe { miniscript_satisfaction_result_free(&raw mut result) };
+                        return Err(Error {
+                            message: "invalid satisfaction result: null stack element with nonzero length"
+                                .to_string(),
+                        });
+                    }
                     stack.push(Vec::new());
                 } else {
                     let elem = unsafe { std::slice::from_raw_parts(elem_ptr, elem_len) }.to_vec();
