@@ -26,12 +26,13 @@ struct StringKeyContext {
 
     miniscript::MiniscriptContext MsContext() const { return ms_ctx; }
 
-    template<typename I>
-    std::optional<StringKey> FromString(I begin, I end) const {
-        return StringKey(std::string(begin, end));
+    std::optional<StringKey> FromString(std::span<const char>& in) const {
+        // Reject empty keys (Bitcoin Core v30 rejected these before calling FromString)
+        if (in.empty()) return {};
+        return StringKey(std::string(in.begin(), in.end()));
     }
 
-    std::optional<std::string> ToString(const StringKey& key) const {
+    std::optional<std::string> ToString(const StringKey& key, bool&) const {
         return key.str;
     }
 
@@ -72,12 +73,13 @@ struct CallbackSatisfier {
 
     miniscript::MiniscriptContext MsContext() const { return ms_ctx; }
 
-    template<typename I>
-    std::optional<StringKey> FromString(I begin, I end) const {
-        return StringKey(std::string(begin, end));
+    std::optional<StringKey> FromString(std::span<const char>& in) const {
+        // Reject empty keys (Bitcoin Core v30 rejected these before calling FromString)
+        if (in.empty()) return {};
+        return StringKey(std::string(in.begin(), in.end()));
     }
 
-    std::optional<std::string> ToString(const StringKey& key) const {
+    std::optional<std::string> ToString(const StringKey& key, bool&) const {
         return key.str;
     }
 
@@ -301,10 +303,10 @@ struct CallbackSatisfier {
 };
 
 struct MiniscriptNode {
-    miniscript::NodeRef<StringKey> node;
+    miniscript::Node<StringKey> node;
     miniscript::MiniscriptContext ctx;
 
-    MiniscriptNode(miniscript::NodeRef<StringKey>&& n, miniscript::MiniscriptContext c)
+    MiniscriptNode(miniscript::Node<StringKey>&& n, miniscript::MiniscriptContext c)
         : node(std::move(n)), ctx(c) {}
 };
 
@@ -365,7 +367,7 @@ MiniscriptResult miniscript_from_string(const char* input,
             return result;
         }
 
-        *out_node = new MiniscriptNode(std::move(node), ms_ctx);
+        *out_node = new MiniscriptNode(std::move(*node), ms_ctx);
         result.success = true;
 
     } catch (const std::exception& e) {
@@ -378,13 +380,13 @@ MiniscriptResult miniscript_from_string(const char* input,
 }
 
 char* miniscript_to_string(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return nullptr;
     }
 
     try {
         StringKeyContext key_ctx(node->ctx);
-        auto str = node->node->ToString(key_ctx);
+        auto str = node->node.ToString(key_ctx);
         if (str) {
             return strdup_safe(*str);
         }
@@ -395,13 +397,13 @@ char* miniscript_to_string(const MiniscriptNode* node) {
 }
 
 bool miniscript_to_script(const MiniscriptNode* node, uint8_t** out_script, size_t* out_len) {
-    if (!node || !node->node || !out_script || !out_len) {
+    if (!node || !out_script || !out_len) {
         return false;
     }
 
     try {
         StringKeyContext key_ctx(node->ctx);
-        CScript script = node->node->ToScript(key_ctx);
+        CScript script = node->node.ToScript(key_ctx);
 
         *out_len = script.size();
         *out_script = static_cast<uint8_t*>(malloc(*out_len));
@@ -416,27 +418,27 @@ bool miniscript_to_script(const MiniscriptNode* node, uint8_t** out_script, size
 }
 
 bool miniscript_is_valid(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
-    return node->node->IsValid();
+    return node->node.IsValid();
 }
 
 bool miniscript_is_sane(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
-    return node->node->IsSane();
+    return node->node.IsSane();
 }
 
 char* miniscript_get_type(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return nullptr;
     }
 
     try {
         using namespace miniscript;
-        Type typ = node->node->GetType();
+        Type typ = node->node.GetType();
         std::string type_str;
 
         if (typ << "B"_mst) type_str += "B";
@@ -462,11 +464,11 @@ char* miniscript_get_type(const MiniscriptNode* node) {
 }
 
 bool miniscript_max_satisfaction_size(const MiniscriptNode* node, size_t* out_size) {
-    if (!node || !node->node || !out_size) {
+    if (!node || !out_size) {
         return false;
     }
 
-    auto size = node->node->GetWitnessSize();
+    auto size = node->node.GetWitnessSize();
     if (size) {
         *out_size = *size;
         return true;
@@ -475,61 +477,61 @@ bool miniscript_max_satisfaction_size(const MiniscriptNode* node, size_t* out_si
 }
 
 bool miniscript_is_non_malleable(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
-    return node->node->IsNonMalleable();
+    return node->node.IsNonMalleable();
 }
 
 bool miniscript_needs_signature(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
-    return node->node->NeedsSignature();
+    return node->node.NeedsSignature();
 }
 
 bool miniscript_has_timelock_mix(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
     // Timelock mix means the 'k' property is NOT set
     using namespace miniscript;
-    return !(node->node->GetType() << "k"_mst);
+    return !(node->node.GetType() << "k"_mst);
 }
 
 bool miniscript_is_valid_top_level(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
-    return node->node->IsValidTopLevel();
+    return node->node.IsValidTopLevel();
 }
 
 bool miniscript_check_ops_limit(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
-    return node->node->CheckOpsLimit();
+    return node->node.CheckOpsLimit();
 }
 
 bool miniscript_check_stack_size(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
-    return node->node->CheckStackSize();
+    return node->node.CheckStackSize();
 }
 
 bool miniscript_check_duplicate_key(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
-    return node->node->CheckDuplicateKey();
+    return node->node.CheckDuplicateKey();
 }
 
 bool miniscript_get_ops(const MiniscriptNode* node, uint32_t* out_ops) {
-    if (!node || !node->node || !out_ops) {
+    if (!node || !out_ops) {
         return false;
     }
-    auto ops = node->node->GetOps();
+    auto ops = node->node.GetOps();
     if (ops) {
         *out_ops = *ops;
         return true;
@@ -538,10 +540,10 @@ bool miniscript_get_ops(const MiniscriptNode* node, uint32_t* out_ops) {
 }
 
 bool miniscript_get_stack_size(const MiniscriptNode* node, uint32_t* out_size) {
-    if (!node || !node->node || !out_size) {
+    if (!node || !out_size) {
         return false;
     }
-    auto size = node->node->GetStackSize();
+    auto size = node->node.GetStackSize();
     if (size) {
         *out_size = *size;
         return true;
@@ -550,10 +552,10 @@ bool miniscript_get_stack_size(const MiniscriptNode* node, uint32_t* out_size) {
 }
 
 bool miniscript_get_exec_stack_size(const MiniscriptNode* node, uint32_t* out_size) {
-    if (!node || !node->node || !out_size) {
+    if (!node || !out_size) {
         return false;
     }
-    auto size = node->node->GetExecStackSize();
+    auto size = node->node.GetExecStackSize();
     if (size) {
         *out_size = *size;
         return true;
@@ -562,10 +564,10 @@ bool miniscript_get_exec_stack_size(const MiniscriptNode* node, uint32_t* out_si
 }
 
 bool miniscript_get_script_size(const MiniscriptNode* node, size_t* out_size) {
-    if (!node || !node->node || !out_size) {
+    if (!node || !out_size) {
         return false;
     }
-    *out_size = node->node->ScriptSize();
+    *out_size = node->node.ScriptSize();
     return true;
 }
 
@@ -610,7 +612,7 @@ MiniscriptResult miniscript_from_script(const uint8_t* script, size_t script_len
             return result;
         }
 
-        *out_node = new MiniscriptNode(std::move(node), ms_ctx);
+        *out_node = new MiniscriptNode(std::move(*node), ms_ctx);
         result.success = true;
 
     } catch (const std::exception& e) {
@@ -623,12 +625,12 @@ MiniscriptResult miniscript_from_script(const uint8_t* script, size_t script_len
 }
 
 MiniscriptNode* miniscript_find_insane_sub(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return nullptr;
     }
 
     try {
-        auto insane_sub = node->node->FindInsaneSub();
+        auto insane_sub = node->node.FindInsaneSub();
         if (!insane_sub) {
             return nullptr;
         }
@@ -642,17 +644,17 @@ MiniscriptNode* miniscript_find_insane_sub(const MiniscriptNode* node) {
 }
 
 bool miniscript_valid_satisfactions(const MiniscriptNode* node) {
-    if (!node || !node->node) {
+    if (!node) {
         return false;
     }
-    return node->node->ValidSatisfactions();
+    return node->node.ValidSatisfactions();
 }
 
 bool miniscript_get_static_ops(const MiniscriptNode* node, uint32_t* out_ops) {
-    if (!node || !node->node || !out_ops) {
+    if (!node || !out_ops) {
         return false;
     }
-    *out_ops = node->node->GetStaticOps();
+    *out_ops = node->node.GetStaticOps();
     return true;
 }
 
@@ -663,7 +665,7 @@ SatisfactionResult miniscript_satisfy(
 ) {
     SatisfactionResult result = {MINISCRIPT_AVAILABILITY_NO, nullptr, nullptr, 0, nullptr};
 
-    if (!node || !node->node) {
+    if (!node) {
         result.error_message = strdup_safe("Invalid node: null pointer");
         return result;
     }
@@ -677,7 +679,7 @@ SatisfactionResult miniscript_satisfy(
         CallbackSatisfier satisfier(callbacks, node->ctx);
         std::vector<std::vector<unsigned char>> stack;
 
-        miniscript::Availability avail = node->node->Satisfy(satisfier, stack, nonmalleable);
+        miniscript::Availability avail = node->node.Satisfy(satisfier, stack, nonmalleable);
 
         if (avail == miniscript::Availability::YES) {
             result.availability = MINISCRIPT_AVAILABILITY_YES;
