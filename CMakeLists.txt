@@ -92,6 +92,7 @@ set(BITCOIN_CORE_SOURCES
     ${BITCOIN_SRC_DIR}/key.cpp
     ${BITCOIN_SRC_DIR}/pubkey.cpp
     ${BITCOIN_SRC_DIR}/key_io.cpp
+    ${BITCOIN_SRC_DIR}/musig.cpp
 
     # Address handling
     ${BITCOIN_SRC_DIR}/addresstype.cpp
@@ -110,7 +111,6 @@ set(BITCOIN_CORE_SOURCES
     # Utilities
     ${BITCOIN_SRC_DIR}/util/strencodings.cpp
     ${BITCOIN_SRC_DIR}/util/string.cpp
-    ${BITCOIN_SRC_DIR}/util/spanparsing.cpp
 )
 
 set(BITCOIN_SOURCES_FILTERED)

@@ -2,36 +2,39 @@
 #include <cstdlib>
 #include <string>
 #include <string_view>
+#include <source_location>
 #include <stdexcept>
 #include <atomic>
 #include <span>
 #include <util/check.h>
 
-std::string StrFormatInternalBug(std::string_view msg, std::string_view file, int line, std::string_view func)
+std::string StrFormatInternalBug(std::string_view msg, const std::source_location& loc)
 {
     std::string result = "Internal bug: ";
     result += msg;
     result += " at ";
-    result += file;
+    result += loc.file_name();
     result += ":";
-    result += std::to_string(line);
+    result += std::to_string(loc.line());
     result += " (";
-    result += func;
+    result += loc.function_name();
     result += ")";
     return result;
 }
 
-NonFatalCheckError::NonFatalCheckError(std::string_view msg, std::string_view file, int line, std::string_view func)
-    : std::runtime_error{StrFormatInternalBug(msg, file, line, func)}
+NonFatalCheckError::NonFatalCheckError(std::string_view msg, const std::source_location& loc)
+    : std::runtime_error{StrFormatInternalBug(msg, loc)}
 {
 }
 
-void assertion_fail(std::string_view file, int line, std::string_view func, std::string_view assertion)
+bool g_detail_test_only_CheckFailuresAreExceptionsNotAborts{false};
+
+void assertion_fail(const std::source_location& loc, std::string_view assertion)
 {
-    fprintf(stderr, "%.*s:%d %.*s: Assertion `%.*s' failed.\n",
-            (int)file.size(), file.data(),
-            line,
-            (int)func.size(), func.data(),
+    fprintf(stderr, "%s:%d %s: Assertion `%.*s' failed.\n",
+            loc.file_name(),
+            (int)loc.line(),
+            loc.function_name(),
             (int)assertion.size(), assertion.data());
     std::abort();
 }
@@ -113,6 +116,11 @@ LockedPoolManager* LockedPoolManager::_instance = nullptr;
 void LockedPoolManager::CreateInstance() {
     static LockedPoolManager instance(std::make_unique<StubLockedPageAllocator>());
     _instance = &instance;
+}
+
+LockedPoolManager& LockedPoolManager::Instance() {
+    if (!_instance) CreateInstance();
+    return *_instance;
 }
 
 // =============================================================================
@@ -287,15 +295,6 @@ uint256 ComputeTapleafHash(unsigned char leaf_version, std::span<const unsigned 
 #include <addresstype.h>
 #include <vector>
 #include <optional>
-
-// MuSig2 stub
-CPubKey MuSig2AggregatePubkeys(const std::vector<CPubKey>& pubkeys) {
-    // Stub - return first pubkey or invalid
-    if (!pubkeys.empty()) {
-        return pubkeys[0];
-    }
-    return CPubKey();
-}
 
 // HD keypath formatting stub
 std::string FormatHDKeypath(const std::vector<uint32_t>& path, bool apostrophe) {
