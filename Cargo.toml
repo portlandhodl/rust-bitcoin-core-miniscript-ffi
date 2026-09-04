@@ -27,6 +27,9 @@ libc = "0.2"
 [dev-dependencies]
 bitcoin = { version = "0.32", features = ["rand"] }
 hex = "0.4"
+# Differential cross-verification against the pure-Rust implementation.
+# miniscript 12.x is the release line paired with bitcoin 0.32.
+miniscript = "12"
 
 [build-dependencies]
 bindgen = "0.72.1"

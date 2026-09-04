@@ -5,6 +5,45 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`FormatHDKeypath` stub prepended a spurious `m`.** The stub confused
+  `FormatHDKeypath` (no root marker) with `WriteHDKeypath` (root marker `m`),
+  so `Descriptor::to_string()` corrupted any descriptor whose keys carry
+  origin info or a BIP32 path suffix:
+  `wpkh([fde3c191/44'/1'/0']tpub.../0/*)` round-tripped as
+  `wpkh([fde3c191m/44'/1'/0']tpub...m/0/*)`, which no longer parses
+  ("Fingerprint is not 4 bytes"). The stub now matches upstream
+  `util/bip32.cpp` exactly. Found by the new differential test suite; pinned
+  by `test_gap_origin_keypath_serialization_roundtrip`.
+
+### Testing
+
+- **Differential test suite against rust-miniscript**
+  (`tests/unit/differential_descriptors.rs`): a deterministic corpus of
+  1,400+ descriptors — `pk`/`pkh`/`wpkh`/`sh`/`wsh`/`sh(wsh())`/`tr()` with
+  script trees up to depth 2, ranged xpub/tpub keys with origin metadata, and
+  the miniscript fragment space (`pk`, `pkh`, `multi`, `sortedmulti`,
+  `multi_a`, all four hashlocks, `older`/`after` in both height and time
+  modes, `and_v`/`and_b`/`or_b`/`or_c`/`or_d`/`or_i`/`andor`/`thresh` plus
+  `v:`/`a:`/`s:` wrappers) across mainnet/testnet/signet/regtest. Every
+  descriptor is cross-verified against rust-miniscript for parse
+  accept/reject parity, scriptPubKey and address bytes at multiple
+  derivation indices, canonical-form compatibility (both directions),
+  descriptor checksums, analysis predicates (duplicate keys, timelock
+  mixing, malleability, needs-signature), and satisfaction weight (with
+  documented convention exemptions: Core's hard-coded key-path weight for
+  `tr()`, bare `sh(multi)` scriptSig accounting, and thresh max-weight
+  estimation). Spendability is verified by satisfying every policy through
+  **both** implementations with identical signatures/preimages/timelocks and
+  comparing witness stacks byte-for-byte (1,600+ witness comparisons),
+  plus empty-satisfier failure parity and `from_script_bytes` decode
+  round-trips (1,250+ scripts). Gap-focused tests cover the duplicate-key,
+  timelock-mix, 20/21-key multi, 3600-byte WSH limit, and 2^31-1/2^31
+  derivation-index boundaries.
+
 ## [0.6.0] - 2026-09-04
 
 This release applies a full security-audit fix stack (PRs #3–#17) on top of the
