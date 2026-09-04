@@ -15,6 +15,7 @@ pub mod descriptor_private_keys;
 pub mod descriptor_timelocks;
 pub mod descriptor_validation;
 pub mod descriptor_wrappers;
+pub mod differential_descriptors;
 pub mod edge_cases;
 pub mod miniscript_key_bytes;
 pub mod resource_limits;
