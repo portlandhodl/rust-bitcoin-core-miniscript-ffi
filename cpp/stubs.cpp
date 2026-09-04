@@ -75,6 +75,18 @@ void memory_cleanse(void* ptr, size_t len) {
 // Include the actual header to get the right class definition
 #include <support/lockedpool.h>
 
+#include <mutex>
+#include <unordered_map>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#endif
+
 // Minimal LockedPageAllocator stub
 class StubLockedPageAllocator : public LockedPageAllocator {
 public:
@@ -83,13 +95,23 @@ public:
         return malloc(len);
     }
     void FreeLocked(void* addr, size_t len) override {
-        (void)len;
+        if (addr && len) {
+            memory_cleanse(addr, len);
+        }
         ::free(addr);
     }
     size_t GetLimit() override {
         return 0;
     }
 };
+
+namespace {
+// Track allocation sizes so that LockedPool::free() (which receives no size)
+// can securely cleanse and unlock the memory. Bitcoin Core's real LockedPool
+// keeps arena bookkeeping for this; the stub needs an equivalent side table.
+std::mutex g_locked_pool_mutex;
+std::unordered_map<void*, size_t> g_locked_pool_sizes;
+} // namespace
 
 // Provide implementations for the LockedPool and LockedPoolManager classes
 LockedPool::LockedPool(std::unique_ptr<LockedPageAllocator> alloc, LockingFailed_Callback cb)
@@ -100,10 +122,43 @@ LockedPool::~LockedPool() {
 }
 
 void* LockedPool::alloc(size_t size) {
-    return malloc(size);
+    void* ptr = malloc(size);
+    if (ptr && size) {
+        // Best-effort page locking to keep secret material (e.g. CKey via
+        // secure_allocator) out of swap. Failure is acceptable and matches
+        // Bitcoin Core's own behavior when the OS cannot lock pages.
+#if defined(_WIN32)
+        (void)VirtualLock(ptr, size);
+#else
+        (void)mlock(ptr, size);
+#endif
+        std::lock_guard<std::mutex> lock(g_locked_pool_mutex);
+        g_locked_pool_sizes.emplace(ptr, size);
+    }
+    return ptr;
 }
 
 void LockedPool::free(void* ptr) {
+    if (!ptr) return;
+    size_t size = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_locked_pool_mutex);
+        if (auto it = g_locked_pool_sizes.find(ptr); it != g_locked_pool_sizes.end()) {
+            size = it->second;
+            g_locked_pool_sizes.erase(it);
+        }
+    }
+    if (size) {
+        // Defense in depth: secure_allocator::deallocate already cleanses
+        // before calling us, but cleanse here too so that every pool free
+        // path erases secret material, then release any page lock.
+        memory_cleanse(ptr, size);
+#if defined(_WIN32)
+        (void)VirtualUnlock(ptr, size);
+#else
+        (void)munlock(ptr, size);
+#endif
+    }
     ::free(ptr);
 }
 
@@ -122,6 +177,94 @@ LockedPoolManager& LockedPoolManager::Instance() {
     if (!_instance) CreateInstance();
     return *_instance;
 }
+
+// =============================================================================
+// Randomness - GetRandBytes
+// =============================================================================
+//
+// Bitcoin Core's random.cpp is not part of the compiled source set, but
+// ECC_Start() (invoked via the global ECC_Context below) needs GetRandBytes()
+// to randomize the secp256k1 signing context. Provide a minimal,
+// cryptographically secure implementation backed directly by the OS RNG.
+// The function is declared noexcept; RNG failure is unrecoverable here, so we
+// abort rather than risk returning predictable bytes.
+#include <random.h>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <bcrypt.h>
+#include <algorithm>
+#pragma comment(lib, "bcrypt.lib")
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#include <stdlib.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/random.h>
+#include <unistd.h>
+#endif
+
+void GetRandBytes(std::span<unsigned char> bytes) noexcept
+{
+    if (bytes.empty()) return;
+#if defined(_WIN32)
+    size_t off = 0;
+    while (off < bytes.size()) {
+        ULONG chunk = static_cast<ULONG>(std::min<size_t>(bytes.size() - off, 0xFFFFFFFFu));
+        if (BCryptGenRandom(nullptr, bytes.data() + off, chunk,
+                            BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+            std::abort();
+        }
+        off += chunk;
+    }
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+    arc4random_buf(bytes.data(), bytes.size());
+#else
+    size_t off = 0;
+    while (off < bytes.size()) {
+        ssize_t ret = getrandom(bytes.data() + off, bytes.size() - off, 0);
+        if (ret < 0) {
+            if (errno == EINTR) continue;
+            if (errno == ENOSYS) break; // Kernel without getrandom: use /dev/urandom below.
+            std::abort();
+        }
+        off += static_cast<size_t>(ret);
+    }
+    if (off < bytes.size()) {
+        int fd = open("/dev/urandom", O_RDONLY);
+        if (fd < 0) std::abort();
+        while (off < bytes.size()) {
+            ssize_t ret = read(fd, bytes.data() + off, bytes.size() - off);
+            if (ret < 0) {
+                if (errno == EINTR) continue;
+                close(fd);
+                std::abort();
+            }
+            off += static_cast<size_t>(ret);
+        }
+        close(fd);
+    }
+#endif
+}
+
+// =============================================================================
+// secp256k1 signing-context initialization
+// =============================================================================
+//
+// CKey operations (GetPubKey, Derive over unhardened steps, Sign, ...) use
+// Bitcoin Core's global signing context `secp256k1_context_sign`, which is
+// only initialized by ECC_Start(). Bitcoin Core binaries create an
+// ECC_Context during startup; this library never did, so any FFI-reachable
+// path using the signing context dereferenced a null context and crashed the
+// process (e.g. parsing a descriptor containing a WIF private key calls
+// CKey::GetPubKey()). Create a process-lifetime ECC_Context here, mirroring
+// Bitcoin Core's own startup behavior.
+#include <key.h>
+
+static ECC_Context g_ecc_context;
 
 // =============================================================================
 // Chain Parameters - Multi-Network Support
@@ -272,22 +415,57 @@ void SelectParams(int network) {
 // Include the header for DescriptorNetwork enum
 #include "descriptor_wrapper.h"
 
-// Exported function to select chain parameters from Rust
-extern "C" void descriptor_select_params(DescriptorNetwork network) {
-    SelectParams(static_cast<int>(network));
-}
-
-// Taproot hash stubs
+// Taproot hash functions.
+//
+// These MUST match Bitcoin Core's consensus behavior exactly: tr() descriptors
+// with a script tree commit to the Merkle root computed from these functions.
+// They are normally defined in script/interpreter.cpp, which is not part of the
+// compiled source set, so the exact upstream implementations (v31.1) are
+// provided here instead. DO NOT replace these with dummy values: any deviation
+// silently produces wrong output scripts and addresses (burning funds).
+//
+// Reference: vendor/bitcoin/src/script/interpreter.cpp
+#include <script/interpreter.h>
+#include <serialize.h>
 #include <uint256.h>
 
-uint256 ComputeTapbranchHash(std::span<const unsigned char> a, std::span<const unsigned char> b) {
-    // Stub - returns zero hash
-    return uint256();
+#include <algorithm>
+#include <cassert>
+
+// Tagged hashers, normally defined in script/interpreter.cpp (v31.1).
+const HashWriter HASHER_TAPSIGHASH{TaggedHash("TapSighash")};
+const HashWriter HASHER_TAPLEAF{TaggedHash("TapLeaf")};
+const HashWriter HASHER_TAPBRANCH{TaggedHash("TapBranch")};
+
+uint256 ComputeTapleafHash(uint8_t leaf_version, std::span<const unsigned char> script)
+{
+    return (HashWriter{HASHER_TAPLEAF} << leaf_version << CompactSizeWriter(script.size()) << script).GetSHA256();
 }
 
-uint256 ComputeTapleafHash(unsigned char leaf_version, std::span<const unsigned char> script) {
-    // Stub - returns zero hash
-    return uint256();
+uint256 ComputeTapbranchHash(std::span<const unsigned char> a, std::span<const unsigned char> b)
+{
+    HashWriter ss_branch{HASHER_TAPBRANCH};
+    if (std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end())) {
+        ss_branch << a << b;
+    } else {
+        ss_branch << b << a;
+    }
+    return ss_branch.GetSHA256();
+}
+
+uint256 ComputeTaprootMerkleRoot(std::span<const unsigned char> control, const uint256& tapleaf_hash)
+{
+    assert(control.size() >= TAPROOT_CONTROL_BASE_SIZE);
+    assert(control.size() <= TAPROOT_CONTROL_MAX_SIZE);
+    assert((control.size() - TAPROOT_CONTROL_BASE_SIZE) % TAPROOT_CONTROL_NODE_SIZE == 0);
+
+    const int path_len = (control.size() - TAPROOT_CONTROL_BASE_SIZE) / TAPROOT_CONTROL_NODE_SIZE;
+    uint256 k = tapleaf_hash;
+    for (int i = 0; i < path_len; ++i) {
+        std::span node{std::span{control}.subspan(TAPROOT_CONTROL_BASE_SIZE + TAPROOT_CONTROL_NODE_SIZE * i, TAPROOT_CONTROL_NODE_SIZE)};
+        k = ComputeTapbranchHash(k, node);
+    }
+    return k;
 }
 
 // Additional stubs for descriptor layer

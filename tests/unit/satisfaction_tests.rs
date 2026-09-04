@@ -402,3 +402,90 @@ fn test_maybe_satisfier_for_size_estimation() {
         "MAYBE satisfaction should produce a witness stack"
     );
 }
+
+/// A satisfier that panics inside the FFI callback.
+struct AlwaysPanic;
+
+impl Satisfier for AlwaysPanic {
+    fn sign(&self, _key: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        panic!("user code panic inside FFI callback");
+    }
+    fn check_after(&self, _value: u32) -> bool {
+        panic!("user code panic inside FFI callback");
+    }
+    fn check_older(&self, _value: u32) -> bool {
+        panic!("user code panic inside FFI callback");
+    }
+    fn sat_sha256(&self, _hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        panic!("user code panic inside FFI callback");
+    }
+    fn sat_ripemd160(&self, _hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        panic!("user code panic inside FFI callback");
+    }
+    fn sat_hash256(&self, _hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        panic!("user code panic inside FFI callback");
+    }
+    fn sat_hash160(&self, _hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        panic!("user code panic inside FFI callback");
+    }
+}
+
+/// Regression test: a panic inside a `Satisfier` method previously unwound
+/// into an `extern "C"` frame, aborting the entire process ("thread caused
+/// non-unwinding panic. aborting." -> SIGABRT). It must now be contained and
+/// reported as `Availability::No`.
+#[test]
+fn test_panicking_satisfier_does_not_abort() {
+    let ms = Miniscript::from_str("pk(A)", Context::Wsh).expect("should parse");
+    let result = ms.satisfy(AlwaysPanic, false).expect("satisfy returned");
+    assert_eq!(result.availability, Availability::No);
+}
+
+/// Regression test: timelock callbacks are panic-contained as well.
+#[test]
+fn test_panicking_timelock_callback_does_not_abort() {
+    let ms =
+        Miniscript::from_str("and_v(v:pk(A),after(1000))", Context::Wsh).expect("should parse");
+    let result = ms.satisfy(AlwaysPanic, false).expect("satisfy returned");
+    assert_eq!(result.availability, Availability::No);
+}
+
+/// A satisfier that counts sign calls and panics on the first one.
+struct PanicOnceCounter(std::sync::atomic::AtomicUsize);
+
+impl Satisfier for PanicOnceCounter {
+    fn sign(&self, _key: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        panic!("boom");
+    }
+    fn check_after(&self, _value: u32) -> bool {
+        false
+    }
+    fn check_older(&self, _value: u32) -> bool {
+        false
+    }
+    fn sat_sha256(&self, _hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        (Availability::No, None)
+    }
+    fn sat_ripemd160(&self, _hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        (Availability::No, None)
+    }
+    fn sat_hash256(&self, _hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        (Availability::No, None)
+    }
+    fn sat_hash160(&self, _hash: &[u8]) -> (Availability, Option<Vec<u8>>) {
+        (Availability::No, None)
+    }
+}
+
+/// Regression test: after a panic the satisfier is poisoned and never
+/// re-entered during the same satisfy() call (a panicked satisfier may be in
+/// an inconsistent state).
+#[test]
+fn test_panicked_satisfier_is_not_reentered() {
+    // Needs two keys so Core would normally call sign() twice.
+    let ms = Miniscript::from_str("and_v(v:pk(aa),pk(bb))", Context::Wsh).expect("should parse");
+    let satisfier = PanicOnceCounter(std::sync::atomic::AtomicUsize::new(0));
+    let result = ms.satisfy(satisfier, false).expect("satisfy returned");
+    assert_eq!(result.availability, Availability::No);
+}

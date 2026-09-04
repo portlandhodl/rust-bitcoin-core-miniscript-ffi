@@ -1,6 +1,6 @@
 [package]
 name = "bitcoin-core-miniscript-ffi"
-version = "0.5.3"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
@@ -34,6 +34,11 @@ cmake = "0.1"
 
 [features]
 default = []
+# Never download Bitcoin Core sources at build time: require the vendored
+# git submodule (vendor/bitcoin) or the BITCOIN_CORE_SRC environment
+# variable. Recommended for sandboxed/reproducible build environments.
+# (Note: the published crate excludes vendor/, so on crates.io this feature
+# requires BITCOIN_CORE_SRC to be set.)
 vendored = []
 
 # docs.rs configuration
