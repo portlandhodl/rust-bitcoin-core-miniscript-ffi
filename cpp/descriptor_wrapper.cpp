@@ -291,9 +291,20 @@ bool descriptor_get_pubkeys(const DescriptorNode* node, int pos,
         for (const auto& pubkey : pubkeys) {
             (*out_lens)[i] = pubkey.size();
             (*out_pubkeys)[i] = static_cast<uint8_t*>(malloc(pubkey.size()));
-            if ((*out_pubkeys)[i]) {
-                memcpy((*out_pubkeys)[i], pubkey.data(), pubkey.size());
+            if (!(*out_pubkeys)[i]) {
+                // Out of memory: free everything and fail cleanly instead of
+                // silently dropping a key from the result set.
+                for (size_t j = 0; j < i; ++j) {
+                    free((*out_pubkeys)[j]);
+                }
+                free(*out_pubkeys);
+                free(*out_lens);
+                *out_pubkeys = nullptr;
+                *out_lens = nullptr;
+                *out_count = 0;
+                return false;
             }
+            memcpy((*out_pubkeys)[i], pubkey.data(), pubkey.size());
             i++;
         }
 

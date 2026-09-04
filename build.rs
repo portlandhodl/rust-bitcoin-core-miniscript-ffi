@@ -335,7 +335,6 @@ unsafe extern "C" {
         out_node: *mut *mut MiniscriptNode,
     ) -> MiniscriptResult;
 
-    pub fn miniscript_find_insane_sub(node: *const MiniscriptNode) -> *mut MiniscriptNode;
     pub fn miniscript_valid_satisfactions(node: *const MiniscriptNode) -> bool;
     pub fn miniscript_get_static_ops(node: *const MiniscriptNode, out_ops: *mut u32) -> bool;
 

@@ -45,7 +45,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-bitcoin-core-miniscript-ffi = "0.3"
+bitcoin-core-miniscript-ffi = "0.5"
 ```
 
 ### Build Requirements
@@ -160,8 +160,14 @@ This crate provides safe Rust wrappers around unsafe FFI calls to Bitcoin Core's
 - **Memory Safety**: All C-allocated memory is properly freed via RAII (`Drop` impl)
 - **Null Safety**: All pointer dereferences are guarded by null checks
 - **Lifetime Safety**: Rust structs own their C++ objects and ensure proper lifetimes
-- **Thread Safety**: `Miniscript` and `Descriptor` implement `Send` and `Sync`
-- **No Undefined Behavior**: All unsafe blocks have documented invariants
+- **Thread Safety**: `Miniscript` implements `Send` + `Sync`; `Descriptor` implements `Send`. Network-dependent operations (`parse`, `get_address`, `to_string`) are serialized internally with a mutex over Bitcoin Core's global chain parameters.
+- **Panic containment**: panics in user-provided `Satisfier` callbacks are caught at the FFI boundary and reported as "not available" instead of aborting the process.
+
+> **Known limitation:** an internal consistency-check failure inside Bitcoin
+> Core (e.g. `CHECK_NONFATAL` with no recovery path, or a failed `assert`)
+> aborts the process — this is inherited from Bitcoin Core, which is designed
+> never to continue after detecting internal corruption. All assertion-enabled
+> code paths reachable from the public API are covered by the test suite.
 
 ### FFI Design
 
@@ -331,13 +337,15 @@ impl Descriptor {
     /// Convert back to string
     pub fn to_string(&self) -> Option<String>;
 
-    /// Expand to script bytes at a specific index
+    /// Expand to script bytes at a specific index.
+    /// Indices >= 2^31 are rejected (return `None`); the C++ API is limited
+    /// to signed 32-bit positions.
     pub fn expand(&self, index: u32) -> Option<Vec<u8>>;
 
-    /// Get address at a specific index (uses stored network)
+    /// Get address at a specific index (uses stored network; index < 2^31)
     pub fn get_address(&self, index: u32) -> Option<String>;
 
-    /// Get all public keys at a specific index
+    /// Get all public keys at a specific index (index < 2^31)
     pub fn get_pubkeys(&self, index: u32) -> Option<Vec<Vec<u8>>>;
 
     /// Get script size
@@ -476,7 +484,11 @@ fn analyze_tapscript(script: &str) {
 
 ## Thread Safety
 
-`Miniscript` and `Descriptor` implement `Send` and `Sync`, making them safe to use across threads:
+`Miniscript` implements `Send` and `Sync`, making it safe to share across threads.
+`Descriptor` implements `Send` (transfer between threads) but not `Sync`; parsing,
+`get_address()`, and `to_string()` internally serialize access to Bitcoin Core's
+global chain parameters with a mutex, so concurrent use of descriptors for
+different networks is safe:
 
 ```rust
 use miniscript_core_ffi::{Miniscript, Context};
