@@ -1373,6 +1373,18 @@ impl Miniscript {
     }
 
     /// Convert the miniscript to raw script bytes.
+    ///
+    /// # Symbolic keys
+    ///
+    /// Keys in miniscript strings parsed by this crate are symbolic (as in
+    /// Bitcoin Core's own test DSL). The mapping to key bytes is the same for
+    /// script conversion and for [`satisfy()`](Self::satisfy):
+    ///
+    /// - even-length hex strings map to the raw bytes (`"deadbeef"` → 4 bytes);
+    /// - any other name maps to a zero-filled placeholder of the context's key
+    ///   size (33 bytes for [`Context::Wsh`], 32 bytes for [`Context::Tapscript`]);
+    /// - `pk_h()` embeds the HASH160 of the key bytes, so scripts and witnesses
+    ///   correspond.
     #[must_use]
     pub fn to_script_bytes(&self) -> Option<Vec<u8>> {
         let mut script_ptr: *mut u8 = ptr::null_mut();
