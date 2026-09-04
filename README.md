@@ -46,7 +46,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-bitcoin-core-miniscript-ffi = "0.5"
+bitcoin-core-miniscript-ffi = "0.6"
 ```
 
 ### Build Requirements
