@@ -277,17 +277,57 @@ extern "C" void descriptor_select_params(DescriptorNetwork network) {
     SelectParams(static_cast<int>(network));
 }
 
-// Taproot hash stubs
+// Taproot hash functions.
+//
+// These MUST match Bitcoin Core's consensus behavior exactly: tr() descriptors
+// with a script tree commit to the Merkle root computed from these functions.
+// They are normally defined in script/interpreter.cpp, which is not part of the
+// compiled source set, so the exact upstream implementations (v31.1) are
+// provided here instead. DO NOT replace these with dummy values: any deviation
+// silently produces wrong output scripts and addresses (burning funds).
+//
+// Reference: vendor/bitcoin/src/script/interpreter.cpp
+#include <script/interpreter.h>
+#include <serialize.h>
 #include <uint256.h>
 
-uint256 ComputeTapbranchHash(std::span<const unsigned char> a, std::span<const unsigned char> b) {
-    // Stub - returns zero hash
-    return uint256();
+#include <algorithm>
+#include <cassert>
+
+// Tagged hashers, normally defined in script/interpreter.cpp (v31.1).
+const HashWriter HASHER_TAPSIGHASH{TaggedHash("TapSighash")};
+const HashWriter HASHER_TAPLEAF{TaggedHash("TapLeaf")};
+const HashWriter HASHER_TAPBRANCH{TaggedHash("TapBranch")};
+
+uint256 ComputeTapleafHash(uint8_t leaf_version, std::span<const unsigned char> script)
+{
+    return (HashWriter{HASHER_TAPLEAF} << leaf_version << CompactSizeWriter(script.size()) << script).GetSHA256();
 }
 
-uint256 ComputeTapleafHash(unsigned char leaf_version, std::span<const unsigned char> script) {
-    // Stub - returns zero hash
-    return uint256();
+uint256 ComputeTapbranchHash(std::span<const unsigned char> a, std::span<const unsigned char> b)
+{
+    HashWriter ss_branch{HASHER_TAPBRANCH};
+    if (std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end())) {
+        ss_branch << a << b;
+    } else {
+        ss_branch << b << a;
+    }
+    return ss_branch.GetSHA256();
+}
+
+uint256 ComputeTaprootMerkleRoot(std::span<const unsigned char> control, const uint256& tapleaf_hash)
+{
+    assert(control.size() >= TAPROOT_CONTROL_BASE_SIZE);
+    assert(control.size() <= TAPROOT_CONTROL_MAX_SIZE);
+    assert((control.size() - TAPROOT_CONTROL_BASE_SIZE) % TAPROOT_CONTROL_NODE_SIZE == 0);
+
+    const int path_len = (control.size() - TAPROOT_CONTROL_BASE_SIZE) / TAPROOT_CONTROL_NODE_SIZE;
+    uint256 k = tapleaf_hash;
+    for (int i = 0; i < path_len; ++i) {
+        std::span node{std::span{control}.subspan(TAPROOT_CONTROL_BASE_SIZE + TAPROOT_CONTROL_NODE_SIZE * i, TAPROOT_CONTROL_NODE_SIZE)};
+        k = ComputeTapbranchHash(k, node);
+    }
+    return k;
 }
 
 // Additional stubs for descriptor layer

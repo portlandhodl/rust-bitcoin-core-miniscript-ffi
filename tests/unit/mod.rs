@@ -15,5 +15,6 @@ pub mod descriptor_wrappers;
 pub mod edge_cases;
 pub mod resource_limits;
 pub mod satisfaction_tests;
+pub mod taproot_tree_tests;
 pub mod tapscript_tests;
 pub mod validity_tests;
