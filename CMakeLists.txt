@@ -72,6 +72,17 @@ if(WIN32 OR MSVC)
   # Enable exception handling for MSVC
   if(MSVC)
     add_compile_options(/EHsc)
+    # Match Bitcoin Core's own MSVC build (vendor/bitcoin/CMakeLists.txt):
+    # the traditional MSVC preprocessor mis-expands UNIQUE_NAME(name) =
+    # PASTE2(name, __COUNTER__) used by LOCK()/REVERSE_LOCK() in sync.h
+    # (e.g. 'criticalblock': undeclared identifier in common/args.h), and
+    # __cplusplus needs /Zc:__cplusplus to report the real C++20 value.
+    add_compile_options(/Zc:preprocessor /Zc:__cplusplus /utf-8)
+    # Just My Code (/JMC, on by default for Debug in VS generators) perturbs
+    # macro-expansion/debug-info for LOCK()/UNIQUE_NAME()-style macros; the
+    # library is always built Release (build.rs) so this is defense in depth
+    # for anyone building Debug by hand.
+    set(CMAKE_VS_JUST_MY_CODE_DEBUGGING OFF)
   endif()
 endif()
 

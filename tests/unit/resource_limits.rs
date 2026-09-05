@@ -17,8 +17,8 @@ fn test_large_key_count_99() {
     // Test with 99 keys - tests ops limit edge case
     // Create a script with 99 and_b operations
     let mut ms_str = String::new();
-    for i in 0..98 {
-        let key = hex::encode(testdata.pubkeys[i].to_bytes());
+    for pk in testdata.pubkeys.iter().take(98) {
+        let key = hex::encode(pk.to_bytes());
         let _ = write!(ms_str, "and_b(pk({key}),a:");
     }
     let key = hex::encode(testdata.pubkeys[98].to_bytes());
@@ -309,10 +309,12 @@ fn test_multi_with_max_keys() {
     let testdata = get_testdata();
 
     // Test multi with 20 keys (max for P2WSH)
-    let mut keys = Vec::new();
-    for i in 0..20 {
-        keys.push(hex::encode(testdata.pubkeys[i].to_bytes()));
-    }
+    let keys: Vec<String> = testdata
+        .pubkeys
+        .iter()
+        .take(20)
+        .map(|pk| hex::encode(pk.to_bytes()))
+        .collect();
     let ms_str = format!("multi(1,{})", keys.join(","));
 
     let ms_wsh = Miniscript::from_str(&ms_str, Context::Wsh);
@@ -322,7 +324,12 @@ fn test_multi_with_max_keys() {
     );
 
     // Test multi with 21 keys (exceeds P2WSH limit)
-    keys.push(hex::encode(testdata.pubkeys[20].to_bytes()));
+    let keys: Vec<String> = testdata
+        .pubkeys
+        .iter()
+        .take(21)
+        .map(|pk| hex::encode(pk.to_bytes()))
+        .collect();
     let ms_str = format!("multi(1,{})", keys.join(","));
 
     let ms_wsh = Miniscript::from_str(&ms_str, Context::Wsh);
@@ -338,10 +345,12 @@ fn test_multi_a_with_many_keys() {
     let testdata = get_testdata();
 
     // Test multi_a with 50 keys (allowed in Tapscript)
-    let mut keys = Vec::new();
-    for i in 0..50 {
-        keys.push(hex::encode(testdata.pubkeys[i].to_bytes()));
-    }
+    let keys: Vec<String> = testdata
+        .pubkeys
+        .iter()
+        .take(50)
+        .map(|pk| hex::encode(pk.to_bytes()))
+        .collect();
     let ms_str = format!("multi_a(1,{})", keys.join(","));
 
     let ms_tap = Miniscript::from_str(&ms_str, Context::Tapscript);

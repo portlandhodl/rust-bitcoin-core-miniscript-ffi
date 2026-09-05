@@ -23,6 +23,13 @@ fn main() {
 
     let dst = cmake::Config::new(&manifest_dir)
         .define("CMAKE_BUILD_TYPE", "Release")
+        // Multi-config generators (Visual Studio) ignore CMAKE_BUILD_TYPE;
+        // without .profile() they build Debug, which (a) links the debug CRT
+        // (msvcrtd) while Rust always links msvcrt, and (b) enables /JMC
+        // (Just My Code), whose macro-expansion quirks break Bitcoin Core's
+        // LOCK()/UNIQUE_NAME() in common/args.h on MSVC. Upstream Core CI
+        // builds Release; match it.
+        .profile("Release")
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("BITCOIN_SRC_DIR", bitcoin_src.to_str().unwrap())
         .build();
