@@ -39,6 +39,17 @@ fn main() {
         "cargo:rustc-link-search=native={}/build/secp256k1/lib",
         dst.display()
     );
+    // Multi-config generators (Visual Studio) place the secp256k1 static lib
+    // in a per-config subdirectory. The C++ side is always built Release
+    // (see .profile() above); keep Debug for completeness.
+    println!(
+        "cargo:rustc-link-search=native={}/build/secp256k1/lib/Release",
+        dst.display()
+    );
+    println!(
+        "cargo:rustc-link-search=native={}/build/secp256k1/lib/Debug",
+        dst.display()
+    );
     println!("cargo:rustc-link-lib=static=miniscript_wrapper");
     println!("cargo:rustc-link-lib=static=secp256k1");
 
