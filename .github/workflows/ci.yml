@@ -143,6 +143,13 @@ jobs:
   security:
     name: Security Audit
     runs-on: ubuntu-latest
+    # rustsec/audit-check files its result as a check run via the API; the
+    # top-level least-privilege default (contents: read) does not allow that
+    # ("Resource not accessible by integration"), so grant this one job
+    # checks: write on top of read.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (pinned SHA)
