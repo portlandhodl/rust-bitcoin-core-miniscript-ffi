@@ -16,6 +16,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs of the same PR/branch (the full matrix takes ~40min).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -36,12 +41,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (pinned SHA)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (pinned SHA)
         with:
           submodules: recursive
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master (pinned SHA)
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master (pinned SHA)
         with:
           toolchain: ${{ matrix.rust }}
           components: rustfmt, clippy
@@ -50,16 +55,16 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential libboost-dev libclang-dev
+          sudo apt-get install -y cmake build-essential libclang-dev
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install cmake boost llvm
+          brew install cmake llvm
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
 
       - name: Cache cargo registry
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4 (pinned SHA)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 (pinned SHA)
         with:
           path: |
             ~/.cargo/registry
@@ -93,22 +98,21 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (pinned SHA)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (pinned SHA)
         with:
           submodules: recursive
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable (pinned SHA)
-
-      - name: Install LLVM
-        uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0 # v2 (pinned SHA)
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master (pinned SHA)
         with:
-          version: "17.0"
+          toolchain: stable
 
-      - name: Install Boost
+      # windows-latest ships LLVM (libclang for bindgen) and CMake; no Boost
+      # is needed (no compiled Bitcoin Core source includes it).
+      - name: Show toolchain versions
         run: |
-          vcpkg install boost:x64-windows
-          echo "BOOST_ROOT=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+          clang --version
+          cmake --version
 
       - name: Build
         run: cargo build --verbose
@@ -122,19 +126,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (pinned SHA)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (pinned SHA)
         with:
           submodules: recursive
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master (pinned SHA)
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master (pinned SHA)
         with:
           toolchain: "1.85"
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential libboost-dev libclang-dev
+          sudo apt-get install -y cmake build-essential libclang-dev
 
       - name: Build with MSRV
         run: cargo build --verbose
@@ -143,40 +147,45 @@ jobs:
   security:
     name: Security Audit
     runs-on: ubuntu-latest
-    # rustsec/audit-check files its result as a check run via the API; the
-    # top-level least-privilege default (contents: read) does not allow that
-    # ("Resource not accessible by integration"), so grant this one job
-    # checks: write on top of read.
-    permissions:
-      contents: read
-      checks: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (pinned SHA)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (pinned SHA)
 
-      - name: Run security audit
-        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2 (pinned SHA)
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master (pinned SHA)
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          toolchain: stable
 
-  # Publish dry-run (only on main branch)
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26 (pinned SHA)
+        with:
+          tool: cargo-audit
+
+      # Plain `cargo audit` fails the job on any advisory and needs no API
+      # write access (unlike rustsec/audit-check, which files a check run).
+      - name: Run security audit
+        run: cargo audit
+
+  # Publish dry-run (only on the default branch)
   publish-check:
     name: Publish Check
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (pinned SHA)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (pinned SHA)
         with:
           submodules: recursive
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable (pinned SHA)
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master (pinned SHA)
+        with:
+          toolchain: stable
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential libboost-dev libclang-dev
+          sudo apt-get install -y cmake build-essential libclang-dev
 
       - name: Check package
         run: cargo publish --dry-run
