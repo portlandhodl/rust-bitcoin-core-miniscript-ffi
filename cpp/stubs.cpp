@@ -250,6 +250,29 @@ void GetRandBytes(std::span<unsigned char> bytes) noexcept
 #endif
 }
 
+// CKey::MakeNewKey() references GetStrongRandBytes(). GNU ld/lld discard the
+// unreferenced section, but MSVC's linker reports the unresolved symbol, so
+// provide it. GetRandBytes() above already reads the OS RNG directly.
+void GetStrongRandBytes(std::span<unsigned char> bytes) noexcept
+{
+    GetRandBytes(bytes);
+}
+
+// =============================================================================
+// Logging
+// =============================================================================
+//
+// Bitcoin Core's logging library requires the application to provide these
+// (util/log.h). This library has no log sink: drop everything. Needed for the
+// same MSVC-linker reason as GetStrongRandBytes() (e.g. LogWarning() in
+// script/signingprovider.cpp).
+#include <util/log.h>
+
+namespace util::log {
+bool ShouldLog(Category, Level) { return false; }
+void Log(Entry) {}
+} // namespace util::log
+
 // =============================================================================
 // secp256k1 signing-context initialization
 // =============================================================================

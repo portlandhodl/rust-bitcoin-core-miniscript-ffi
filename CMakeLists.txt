@@ -47,15 +47,19 @@ set(SECP256K1_INSTALL OFF CACHE BOOL "" FORCE)
 
 # Add secp256k1 as a subdirectory
 add_subdirectory(${SECP256K1_SRC_DIR} ${CMAKE_CURRENT_BINARY_DIR}/secp256k1 EXCLUDE_FROM_ALL)
-
-find_package(Boost 1.73.0 REQUIRED)
+# Give the archive a name that cannot collide with rust-secp256k1's
+# secp256k1-sys (which also emits a `secp256k1` static lib, with prefixed
+# symbols). Upstream names it `libsecp256k1.lib` on MSVC and
+# `libsecp256k1.a` elsewhere, so `static=secp256k1` either resolved to the
+# wrong library (MSVC: unresolved secp256k1_* symbols) or depended on
+# link-search order (everywhere else). build.rs links this name.
+set_target_properties(secp256k1 PROPERTIES ARCHIVE_OUTPUT_NAME core_secp256k1)
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp
     ${BITCOIN_SRC_DIR}
     ${BITCOIN_SRC_DIR}/..
     ${SECP256K1_SRC_DIR}/include
-    ${Boost_INCLUDE_DIRS}
 )
 
 add_compile_definitions(
@@ -163,7 +167,6 @@ endif()
 
 target_link_libraries(miniscript_wrapper
     PRIVATE
-        ${Boost_LIBRARIES}
         secp256k1
 )
 

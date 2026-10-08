@@ -56,7 +56,7 @@ This crate requires:
 - **Rust 1.85+** (2024 edition)
 - **CMake 3.16+**
 - **C++20 compatible compiler** (GCC 10+, Clang 10+, or MSVC 2019+)
-- **Boost 1.73+** (headers only)
+- **libclang** (used by `bindgen` to generate the FFI bindings)
 - **Bitcoin Core source code** (automatically included as a git submodule)
 
 If the vendored submodule is missing (e.g. when building the crate from
@@ -68,7 +68,7 @@ time, enable the `vendored` feature and provide sources via the submodule or
 
 ```toml
 [dependencies]
-bitcoin-core-miniscript-ffi = { version = "0.5", features = ["vendored"] }
+bitcoin-core-miniscript-ffi = { version = "0.6", features = ["vendored"] }
 ```
 
 ```bash
@@ -78,21 +78,20 @@ export BITCOIN_CORE_SRC=/path/to/bitcoin/src  # required on crates.io builds
 #### Linux (Debian/Ubuntu)
 
 ```bash
-sudo apt-get install cmake build-essential libboost-dev
+sudo apt-get install cmake build-essential libclang-dev
 ```
 
 #### macOS
 
 ```bash
-brew install cmake boost
+brew install cmake llvm
+export LIBCLANG_PATH="$(brew --prefix llvm)/lib"
 ```
 
 #### Windows
 
-```powershell
-# Using vcpkg
-vcpkg install boost:x64-windows
-```
+Visual Studio 2022+ (MSVC) with the C++ workload, CMake, and LLVM (for
+`libclang`; set `LIBCLANG_PATH` if it is not on `PATH`).
 
 ### Building from Source
 
@@ -536,7 +535,7 @@ The library is optimized for production use:
 |---------|----------------------------|-----------------|
 | Implementation | Bitcoin Core C++ | Pure Rust |
 | Consensus compatibility | Reference | Aims to match |
-| Dependencies | Bitcoin Core, Boost | Pure Rust |
+| Dependencies | Bitcoin Core (vendored) | Pure Rust |
 | Build complexity | Higher | Lower |
 | Use case | Cross-verification, reference | Production wallets |
 

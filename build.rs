@@ -51,7 +51,7 @@ fn main() {
         dst.display()
     );
     println!("cargo:rustc-link-lib=static=miniscript_wrapper");
-    println!("cargo:rustc-link-lib=static=secp256k1");
+    println!("cargo:rustc-link-lib=static=core_secp256k1");
 
     #[cfg(target_os = "linux")]
     println!("cargo:rustc-link-lib=stdc++");
