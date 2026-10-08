@@ -193,7 +193,7 @@
 //! |---------|----------------------------|-----------------|
 //! | Implementation | Bitcoin Core C++ | Pure Rust |
 //! | Consensus compatibility | Reference | Aims to match |
-//! | Dependencies | Bitcoin Core, Boost | Pure Rust |
+//! | Dependencies | Bitcoin Core (vendored) | Pure Rust |
 //! | Build complexity | Higher | Lower |
 //! | Use case | Cross-verification, reference | Production wallets |
 //!

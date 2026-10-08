@@ -38,7 +38,7 @@ set(SECP256K1_BUILD_EXHAUSTIVE_TESTS OFF CACHE BOOL "" FORCE)
 set(SECP256K1_BUILD_CTIME_TESTS OFF CACHE BOOL "" FORCE)
 set(SECP256K1_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SECP256K1_ENABLE_MODULE_ECDH ON CACHE BOOL "" FORCE)
-set(SECP256K1_ENABLE_MODULE_RECOVERY OFF CACHE BOOL "" FORCE)
+set(SECP256K1_ENABLE_MODULE_RECOVERY ON CACHE BOOL "" FORCE)
 set(SECP256K1_ENABLE_MODULE_EXTRAKEYS ON CACHE BOOL "" FORCE)
 set(SECP256K1_ENABLE_MODULE_SCHNORRSIG ON CACHE BOOL "" FORCE)
 set(SECP256K1_ENABLE_MODULE_MUSIG ON CACHE BOOL "" FORCE)
@@ -47,15 +47,19 @@ set(SECP256K1_INSTALL OFF CACHE BOOL "" FORCE)
 
 # Add secp256k1 as a subdirectory
 add_subdirectory(${SECP256K1_SRC_DIR} ${CMAKE_CURRENT_BINARY_DIR}/secp256k1 EXCLUDE_FROM_ALL)
-
-find_package(Boost 1.73.0 REQUIRED)
+# Give the archive a name that cannot collide with rust-secp256k1's
+# secp256k1-sys (which also emits a `secp256k1` static lib, with prefixed
+# symbols). Upstream names it `libsecp256k1.lib` on MSVC and
+# `libsecp256k1.a` elsewhere, so `static=secp256k1` either resolved to the
+# wrong library (MSVC: unresolved secp256k1_* symbols) or depended on
+# link-search order (everywhere else). build.rs links this name.
+set_target_properties(secp256k1 PROPERTIES ARCHIVE_OUTPUT_NAME core_secp256k1)
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp
     ${BITCOIN_SRC_DIR}
     ${BITCOIN_SRC_DIR}/..
     ${SECP256K1_SRC_DIR}/include
-    ${Boost_INCLUDE_DIRS}
 )
 
 add_compile_definitions(
@@ -72,6 +76,25 @@ if(WIN32 OR MSVC)
   # Enable exception handling for MSVC
   if(MSVC)
     add_compile_options(/EHsc)
+    # Match Bitcoin Core's own MSVC build (vendor/bitcoin/CMakeLists.txt):
+    # the traditional MSVC preprocessor mis-expands UNIQUE_NAME(name) =
+    # PASTE2(name, __COUNTER__) used by LOCK()/REVERSE_LOCK() in sync.h
+    # (e.g. 'criticalblock': undeclared identifier in common/args.h), and
+    # __cplusplus needs /Zc:__cplusplus to report the real C++20 value.
+    add_compile_options(/Zc:preprocessor /Zc:__cplusplus /utf-8)
+    # The Windows SDK's <nb30.h> (via <winsock2.h> via Core's
+    # <compat/compat.h>) does `#define UNIQUE_NAME 0x00`, clobbering Core's
+    # util/macros.h UNIQUE_NAME() depending on per-TU include order and
+    # breaking LOCK()/REVERSE_LOCK() expansion (C3878/C2065 in
+    # common/args.h). Force-include a shim that consumes the Windows socket
+    # headers first and sync.h last, so the correct definition always wins.
+    # C++ only: secp256k1's C sources must not see a C++ header.
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/cpp/msvc_unique_name_shim.h>)
+    # Just My Code (/JMC, on by default for Debug in VS generators) perturbs
+    # macro-expansion/debug-info for LOCK()/UNIQUE_NAME()-style macros; the
+    # library is always built Release (build.rs) so this is defense in depth
+    # for anyone building Debug by hand.
+    set(CMAKE_VS_JUST_MY_CODE_DEBUGGING OFF)
   endif()
 endif()
 
@@ -144,7 +167,6 @@ endif()
 
 target_link_libraries(miniscript_wrapper
     PRIVATE
-        ${Boost_LIBRARIES}
         secp256k1
 )
 
